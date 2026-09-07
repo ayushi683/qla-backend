@@ -1,0 +1,15 @@
+services:
+  backend:
+    build: .
+    ports:
+      - "8000:8000"
+    environment:
+      - SECRET_KEY=${SECRET_KEY:-dev-secret-change-me}
+      - DATABASE_URL=${DATABASE_URL:-sqlite:////app/instance/qla.db}
+    volumes:
+      - ./instance:/app/instance
+    # Run the seed script once, then start the API. Comment out the
+    # seed.py line once you have real data and don't want demo cases
+    # re-checked on every restart (it's idempotent, but still).
+    command: >
+      sh -c "python seed.py && uvicorn app.main:app --host 0.0.0.0 --port 8000"

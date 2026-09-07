@@ -1,0 +1,73 @@
+[
+  {
+    "customer_name": "Vindhya Paper Mills", "customer_email": "purchase@vindhyapaper.com",
+    "project_name": "Effluent Treatment Upgrade", "enq_no": "VPM/ENQ/2026/03", "confidence": 0.85,
+    "items": [
+      {"tag": "LS-30", "desc": "Float type level switch, guard pipe, SS316 wetted", "type": "Level Switch", "qty": 4, "moc": "SS316",
+       "matches": [{"model": "FGSO-J21DSD1SW", "conf": 0.90, "why": "Guided float switch, SS316 wetted."}]}
+    ]
+  },
+  {
+    "customer_name": "Konkan Speciality Chemicals", "customer_email": "buyer@konkanchem.com",
+    "project_name": "Acid Storage Tank Farm", "enq_no": "KSC/ENQ/2026/09", "confidence": 0.72,
+    "items": [
+      {"tag": "LG-11", "desc": "Reflex flat glass level gauge, 98% H2SO4 service", "type": "Level Gauge", "qty": 6, "moc": "PVDF/PTFE",
+       "matches": [
+         {"model": "RFG-LPF2321233AB1W1", "conf": 0.82, "why": "PVDF/PTFE wetted, matches acid service."},
+         {"model": "FBG-FP1WWG1PO1256GW", "conf": 0.31, "level": "B", "why": "PP wetted — not acid compatible."}
+       ]}
+    ]
+  },
+  {
+    "customer_name": "Deccan Sugar Industries", "customer_email": "procurement@deccansugar.com",
+    "project_name": "Boiler Feed Water Plant", "enq_no": "DSI/ENQ/2026/12", "confidence": 0.88,
+    "items": [
+      {"tag": "LT-09", "desc": "Radar level transmitter, 3\" flange, 4-20mA + HART", "type": "Level Transmitter", "qty": 2, "range_text": "0-4000mm",
+       "matches": [{"model": "TRD-INTROL91-1121W", "conf": 0.91, "why": "26GHz radar, matches range."}]}
+    ]
+  },
+  {
+    "customer_name": "Ganga Fertilizers Ltd", "customer_email": "buyer@gangafert.com",
+    "project_name": "Ammonia Storage Monitoring", "enq_no": "GFL/ENQ/2026/05", "confidence": 0.68,
+    "items": [
+      {"tag": "MLG-02", "desc": "Magnetic level gauge, high pressure, SS316", "type": "Level Gauge", "qty": 3, "moc": "SS316",
+       "matches": [{"model": "MLG-SSAS4BBW2A2BTEWAWWW", "conf": 0.79, "why": "SS316, high pressure rated."}]}
+    ]
+  },
+  {
+    "customer_name": "Marine Salt Works", "customer_email": "orders@marinesalt.com",
+    "project_name": "Brine Tank Instrumentation", "enq_no": "MSW/ENQ/2026/21", "confidence": 0.80,
+    "items": [
+      {"tag": "LS-45", "desc": "Magnetic float pivoted switch, non-guided, PP wetted", "type": "Level Switch", "qty": 5, "moc": "PP",
+       "matches": [{"model": "FPS-JP2C2SRWW", "conf": 0.86, "why": "PP wetted, non-guided, matches spec."}]}
+    ]
+  },
+  {
+    "customer_name": "Coastal Refineries Pvt Ltd", "customer_email": "buyer@coastalref.com",
+    "project_name": "Crude Storage Tank Farm", "enq_no": "CRP/ENQ/2026/17", "confidence": 0.83,
+    "items": [
+      {"tag": "LT-15", "desc": "Ultrasonic level transmitter, 2\" flange, 4-20mA", "type": "Level Transmitter", "qty": 3, "range_text": "0-3500mm",
+       "matches": [{"model": "TUS-ULTRATROL-21", "conf": 0.88, "why": "Ultrasonic, matches range and connection."}]},
+      {"tag": "CNS-08", "desc": "Conductivity type level switch, single point", "type": "Level Switch", "qty": 2,
+       "matches": [{"model": "CNS-IJS3UST3", "conf": 0.84, "why": "Conductivity probe, matches single-point spec."}]}
+    ]
+  },
+  {
+    "customer_name": "Nilgiri Textile Mills", "customer_email": "purchase@nilgiritextile.com",
+    "project_name": "Dyeing Effluent Plant", "enq_no": "NTM/ENQ/2026/22", "confidence": 0.75,
+    "items": [
+      {"tag": "TTG-04", "desc": "Transparent tubular level gauge, borosilicate glass", "type": "Level Gauge", "qty": 4,
+       "matches": [{"model": "TTG-1PA2P31121W", "conf": 0.87, "why": "Tubular glass gauge, standard construction."}]}
+    ]
+  },
+  {
+    "customer_name": "Bharat Steel Works", "customer_email": "procurement@bharatsteel.com",
+    "project_name": "Blast Furnace Water Circuit", "enq_no": "BSW/ENQ/2026/31", "confidence": 0.77,
+    "items": [
+      {"tag": "LS-52", "desc": "Float type level switch, no guard pipe, PP wetted", "type": "Level Switch", "qty": 6, "moc": "PP",
+       "matches": [{"model": "FGSO-J21EPD1WW", "conf": 0.85, "why": "Non-guided float switch, PP wetted, matches spec."}]},
+      {"tag": "LG-19", "desc": "Float & board type level gauge, atmospheric tank", "type": "Level Gauge", "qty": 2,
+       "matches": [{"model": "FBG-FP1WWG1PO1256GW", "conf": 0.92, "why": "Standard float & board gauge for atmospheric service."}]}
+    ]
+  }
+]
