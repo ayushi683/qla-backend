@@ -199,3 +199,7 @@ class UserListOut(BaseModel):
     is_enabled: bool
     last_login_at: Optional[datetime] = None
     category: Optional[str] = None
+
+class EmailUpdateRequest(BaseModel):
+    subject: Optional[str] = None
+    body_text: Optional[str] = None

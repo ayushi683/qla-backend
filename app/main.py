@@ -22,6 +22,7 @@ app.add_middleware(
 
 app.include_router(auth.router)
 app.include_router(cases.router)
+app.include_router(enquiries.router)
 app.include_router(users.router)
 
 

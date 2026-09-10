@@ -1,6 +1,8 @@
+import PdfViewerModal from "../components/PdfViewerModal";
 import { useState, useEffect } from "react";
 import { Link, useParams, useNavigate } from "react-router-dom";
 import { api } from "../api/client";
+import { formatDateTime } from "../utils/dateFormat";
 import { usePolling } from "../api/usePolling";
 import ProductMatchCard from "../components/ProductMatchCard";
 
@@ -52,6 +54,7 @@ export default function CaseDetail() {
   const [documents, setDocuments] = useState(null);
   const [enquiryEmail, setEnquiryEmail] = useState(null);
   const [docsError, setDocsError] = useState("");
+  const [viewingDoc, setViewingDoc] = useState(null);
 
   useEffect(() => {
     api.caseDocuments(caseId)
@@ -156,7 +159,12 @@ export default function CaseDetail() {
                         <div className="doc-meta">{formatBytes(doc.size_bytes)}</div>
                       </div>
                     </div>
-                    <button className="btn btn-small" onClick={() => handleDownloadDoc(doc)}>Download</button>
+                    <div style={{ display: "flex", gap: 6 }}>
+                      {doc.content_type === "application/pdf" && (
+                        <button className="btn btn-small" onClick={() => setViewingDoc(doc)}>View</button>
+                      )}
+                      <button className="btn btn-small" onClick={() => handleDownloadDoc(doc)}>Download</button>
+                    </div>
                   </div>
                 ))}
               </div>
@@ -191,6 +199,13 @@ export default function CaseDetail() {
             <div className="empty-state"><p>No extracted line items for this case yet.</p></div>
           )}
         </div>
+      )}
+            {viewingDoc && (
+        <PdfViewerModal
+          path={`/api/documents/download/${viewingDoc.document_id}`}
+          filename={viewingDoc.file_name}
+          onClose={() => setViewingDoc(null)}
+        />
       )}
     </div>
   );

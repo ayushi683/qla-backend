@@ -277,8 +277,15 @@ for ref, cat in [("DEMO-0001", "OEM"), ("DEMO-0002", "CP"), ("DEMO-0003", "PROJE
     if c:
         c.category = cat
 
-# --- Real enquiry examples (3 with attachments, 2 email-only) ---
+# --- Real enquiry examples, using actual PDFs placed in sample_enquiries/ ---
 ENQUIRY_DOCS_DIR = os.path.join(os.path.dirname(os.path.abspath(__file__)), "instance", "enquiry_docs")
+
+
+def _read_sample_file(filename):
+    path = os.path.join(os.path.dirname(os.path.abspath(__file__)), "sample_enquiries", filename)
+    with open(path, "rb") as f:
+        return f.read()
+
 
 def add_real_enquiry(ref, customer_name, customer_email, project_name, enq_no, category,
                       subject, sender_email, body_text, attachments, items):
@@ -344,106 +351,63 @@ def add_real_enquiry(ref, customer_name, customer_email, project_name, enq_no, c
     print(f"Created {ref} — {customer_name} ({'with attachment' if attachments else 'email-only'}).")
 
 
-# 1. Mitsubishi Electric — real email + real attachment (PDF)
+# 1. L&T ECC (via Measurecon) — real email + real attached PDF
 add_real_enquiry(
-    "REAL-3368", "Mitsubishi Electric India Pvt Ltd", "Stanley.Solomon@asia.meap.com",
-    "Southern/Northern Link EPC Pipeline Project", "ME/FI/2026", "OEM,MRO",
-    subject="Enquiry for Field Instruments _ ME",
-    sender_email="Stanley.Solomon@asia.meap.com",
+    "REAL-8416", "Larsen & Toubro ECC", "SUNILKUMARPATHY@lntecc.com",
+    "Level Indicator & Level Switches — MP Projects (Rajghat, Madikheda, Gond Devsar, Agar Malwa)",
+    "8416R2", "OEM,MRO",
+    subject="EQ of Level Indicator and Level Switches for various MP Projects (Rajghat, Madikheda, Gond Devsar and Agar Malwa)- Reg",
+    sender_email="SUNILKUMARPATHY@lntecc.com",
     body_text=(
-        "Hello,\n\nKindly refer to the attached details and technical specification of Field Instruments.\n\n"
-        "You are requested to submit the techno commercial offer for Field Instruments.\n\n"
-        "Please go through the attached documents and revert back if you have any queries.\n\n"
-        "Regards,\nStanley F Solomon\nManager-Procurement | SCM"
+        "Dear Mam,\n\nPlease find enclosed the enquiry for level switch and level indicator and send offer for the same.\n\n"
+        "Awaiting for your offer.\n\nRegards,\nSunilkumar Pathy"
     ),
-    attachments=[("Instruments Tech specification.pdf", "application/pdf",
-                  b"%PDF-1.4\n%Sample placeholder for real attachment\n%%EOF")],
-    items=[{"tag": "CNS-01", "desc": "Conductivity type level switch, single point",
-            "type": "Level Switch", "qty": 8,
-            "matches": [{"model": "CNS-TJM1UA3W", "conf": 0.88, "why": "Conductivity probe matches BOM spec."}]}],
+    attachments=[("8416-enq.pdf", "application/pdf", _read_sample_file("8416-enq.pdf"))],
+    items=[{"tag": "CNS-01", "desc": "Conductivity type level switch",
+            "type": "Level Switch", "qty": 4,
+            "matches": [{"model": "CNS-TJM1UA3W", "conf": 0.86, "why": "Conductivity switch matches enquiry spec."}]},
+           {"tag": "FBG-01", "desc": "Float & board type level gauge",
+            "type": "Level Gauge", "qty": 4,
+            "matches": [{"model": "FBG-FN1WWG1M11111AW", "conf": 0.90, "why": "Matches level indicator requirement."}]}],
 )
 
-# 2. L&T ECC — real email + real attachment (Excel)
+# 2. Praj Hipurity (via Techtrol) — real email + real attached PDF
 add_real_enquiry(
-    "REAL-1802", "Larsen & Toubro Construction (ECC)", "saishashank@lntecc.com",
-    "Ballia & Prayagraj Water Supply Schemes", "L&T/BP/2026", "EPC_EXPORT",
-    subject="Enquiry for Level Instrument(s) - Ballia, Prayagraj Packages.",
-    sender_email="saishashank@lntecc.com",
-    body_text=(
-        "Dear Sir,\n\nWe are in process of bidding for the above cited projects falling under Uttar Pradesh state. "
-        "The project scope includes Design & Construction of intake works, Raw Water Pumping Main, Water Treatment Plant, "
-        "Clear Water Reservoir cum Pump House, Clear Water Transmission & Gravity pipelines, Overhead Tanks and associated "
-        "Electromechanical & Instrumentation works.\n\n"
-        "In continuation to the above, Level Instruments are to be supplied and erected as a part of Electromechanical "
-        "& Instrumentation works.\n\n"
-        "So, we request you to provide your best techno-commercial offer for supplying the following components "
-        "described in the sheet(s) enclosed.\n\nThanks & Regards,\nSai Shashank Kandregula\nSenior Engineer - Instrumentation"
-    ),
-    attachments=[("ENQ SPECS - Ballia Package.xlsx",
-                  "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
-                  b"PK\x03\x04placeholder xlsx content")],
-    items=[{"tag": "CNS-B1", "desc": "Conductivity type level switch for Ballia package",
-            "type": "Level Switch", "qty": 5,
-            "matches": [{"model": "CNS-IJS3UST3", "conf": 0.91, "why": "Matches Ballia package spec sheet."}]}],
-)
-
-# 3. Membrane Group India — real email + real attachment (Excel)
-add_real_enquiry(
-    "REAL-4006", "Membrane Group India Pvt Ltd", "purchase3@membranegroupindia.com",
-    "WTP/STP/ETP Project (P-1215)", "MGI/P-1215", "DISTRIBUTED_PRODUCTS",
-    subject="Request for Quotation – Pune (LEVEL GAUGE /LEVEL SWITCH) P - 1215",
-    sender_email="purchase3@membranegroupindia.com",
-    body_text=(
-        "Dear Team,\n\nPlease find attached our requirement for Level Gauge and Level Switch instruments "
-        "for the P-1215 project. Kindly share your best techno-commercial offer at the earliest.\n\n"
-        "Regards,\nArchana Procurement"
-    ),
-    attachments=[("ENQUIRY PUNE TECHTROL P-1215.xlsx",
-                  "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
-                  b"PK\x03\x04placeholder xlsx content")],
-    items=[{"tag": "FBG-01", "desc": "Float & board type level gauge, PP wetted",
+    "REAL-5476", "Praj Hipurity Systems", "lalitkoli@prajhipurity.net",
+    "Level Tube / M-26088", "M-26088", "DISTRIBUTED_PRODUCTS",
+    subject="RFQ : Offer Details for LEVEL TUBE /M-26088",
+    sender_email="lalitkoli@prajhipurity.net",
+    body_text="Please find the enquiry attached for the level tube gauge — kindly share your offer.",
+    attachments=[("5476-enq.pdf", "application/pdf", _read_sample_file("5476-enq.pdf"))],
+    items=[{"tag": "TTG-01", "desc": "Transparent tubular level gauge, borosilicate glass",
             "type": "Level Gauge", "qty": 2,
-            "matches": [{"model": "FBG-FN1WWG1M11111AW", "conf": 0.89, "why": "Matches P-1215 spec sheet."}]}],
+            "matches": [{"model": "TTG-1PA2P31121W", "conf": 0.88, "why": "Tubular glass gauge, standard construction."}]}],
 )
 
-# 4. Unitop Aquacare — real clarification email, NO attachment
+# 3. Measurecon (Rajeshree) — real email + real attached PDF
 add_real_enquiry(
-    "REAL-4851", "Unitop Aquacare Ltd", "etpproject2@unitopaquacare.com",
-    "ETP Level Switch Clarification (E-5044)", "E-5044", "OEM,MRO",
-    subject="RE: PTLW/04851R1/26-27 — E-5044 / FLOAT LEVEL SWITCH - ENQUIRY",
-    sender_email="etpproject2@unitopaquacare.com",
-    body_text=(
-        "Dear Ma'am,\n\nAs discussed, kindly confirm the following points:\n"
-        "1. For the FTS-CJ62S model, we require the terminal enclosure with conduit connection considering two "
-        "cable entries. However, kindly provide only one cable (L1) of 1.25 m length, as we already have the L2 "
-        "cable in stock and will use the same.\n"
-        "2. As per the FPS catalogue, we understand that the external chamber accessories are available for the "
-        "FPS model. We would like to use the external chamber with the MFPS model as well. Kindly check the "
-        "feasibility and confirm.\n\n"
-        "If the above points are feasible, kindly share your revised offer accordingly. Also, please include the "
-        "external chamber for both MFPS and FPS models for a total quantity of 7 Nos.\n\n"
-        "Looking forward to your confirmation and revised offer.\n\nThanks & Regards,\nMrunal Gumgaonkar"
-    ),
-    attachments=None,
-    items=[{"tag": "FTS-CJ62S", "desc": "Float operated tilt level switch with terminal enclosure",
-            "type": "Level Switch", "qty": 7,
-            "matches": [{"model": "FTS-CJ62S", "conf": 0.94, "why": "Exact model requested by customer in email."}]}],
+    "REAL-5300", "Measurecon Instruments (Rajeshree)", "sales.techtrol@measurecon.co.in",
+    "Level Instruments Enquiry", "24250817-Rajeshree", "OEM,MRO",
+    subject="FW: 24250817_Rajeshree_Enquiry for Level Instruments",
+    sender_email="sales.techtrol@measurecon.co.in",
+    body_text="Dear Mam,\n\nPlease find enclosed the enquiry for level switch and send offer for the same.",
+    attachments=[("5300-enq.pdf", "application/pdf", _read_sample_file("5300-enq.pdf"))],
+    items=[{"tag": "DS-01", "desc": "Displacer type level switch",
+            "type": "Level Switch", "qty": 6,
+            "matches": [{"model": "DS-CFSA1MSWC", "conf": 0.83, "why": "Displacer type matches enquiry spec."}]}],
 )
 
-# 5. Autometers Energitec — real short email, NO attachment
+# 4. L&T (via Techtrol) — real email + real attached PDF
 add_real_enquiry(
-    "REAL-2114", "Autometers Energitec Ltd", "instt1@energitec.co.in",
-    "Oil India Assam PRMS — Displacer Switch", "W793", "OEM,MRO",
-    subject="RE: PTLW/02114/26-27, Fw: W793 - RFQ for the Supply of Level Gauge & Level Switch",
-    sender_email="instt1@energitec.co.in",
-    body_text=(
-        "Dear Sir,\n\nPlease quote for displacer type magnetic level switch.\n\n"
-        "Thanks & Regards\nVineet Chamoli\nAssistant Manager (C&I)"
-    ),
-    attachments=None,
-    items=[{"tag": "DS-01", "desc": "Displacer type magnetic level switch",
+    "REAL-5460", "Larsen & Toubro", "north@punetechtrol.com",
+    "RFQ of Level Sensor", "PTLW/01839", "PROJECT",
+    subject="Fw: PTLW/01839/26-27, Fw: RFQ of level sensor",
+    sender_email="north@punetechtrol.com",
+    body_text="Conference call scheduled with customer regarding RFQ for level sensor — please find enquiry attached.",
+    attachments=[("5460-enq.pdf", "application/pdf", _read_sample_file("5460-enq.pdf"))],
+    items=[{"tag": "FTS-01", "desc": "Float type tilt switch, three variants requested",
             "type": "Level Switch", "qty": 3,
-            "matches": [{"model": "DS-CFSA1MSWC", "conf": 0.85, "why": "Displacer type, matches customer's exact request."}]}],
+            "matches": [{"model": "FTS-CJ64S", "conf": 0.80, "why": "Matches one of three requested FTS variants."}]}],
 )
 
 db.commit()

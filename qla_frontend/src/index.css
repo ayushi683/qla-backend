@@ -396,3 +396,7 @@ a { color: inherit; }
 .timeline-row { display: flex; align-items: center; justify-content: space-between; font-size: 0.85rem; padding: 6px 0; border-bottom: 1px solid var(--border); }
 .timeline-row:last-child { border-bottom: none; }
 .timeline-time { color: var(--muted); font-size: 0.8rem; }
+
+.pdf-modal-panel { width: min(900px, 95vw); height: 85vh; }
+.pdf-modal-body { flex: 1; padding: 0; overflow: hidden; }
+.pdf-modal-iframe { width: 100%; height: 100%; border: none; }

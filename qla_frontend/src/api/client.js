@@ -62,6 +62,8 @@ export const api = {
     request(`/api/line-items/${lineItemId}/pick/${recId}`, { method: "POST" }),
 
   quotationDetail: (caseId) => request(`/api/cases/${caseId}/quotation`),
+  updateDraftEmail: (caseId, payload) =>
+    request(`/api/cases/${caseId}/quotation/email`, { method: "PATCH", body: payload }),
   quotationDownloadUrl: (filename) => {
     const token = getToken();
     return `${API_BASE}/api/quotations/download/${encodeURIComponent(filename)}?_t=${token ? "1" : "0"}`;
@@ -70,6 +72,18 @@ export const api = {
   caseDocuments: (caseId) => request(`/api/cases/${caseId}/documents`),
   enquiryEmail: (caseId) => request(`/api/cases/${caseId}/enquiry-email`),
   documentDownloadUrl: (documentId) => `${API_BASE}/api/documents/download/${documentId}`,
+  
+  // Fetches a file with the auth header and returns an in-memory blob URL,
+  // for showing inside our own modal (instead of a new browser tab).
+  getViewUrl: async (path) => {
+    const token = getToken();
+    const res = await fetch(`${API_BASE}${path}`, {
+      headers: token ? { Authorization: `Bearer ${token}` } : {},
+    });
+    if (!res.ok) throw new Error(`Failed to load file (${res.status})`);
+    const blob = await res.blob();
+    return window.URL.createObjectURL(blob);
+  },
 
   downloadBlob: async (path, suggestedFilename) => {
     const token = getToken();

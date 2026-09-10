@@ -17,7 +17,7 @@ from app.quotation_builder import build_quotation_docx, draft_email_text, QUOTAT
 from app.schemas import (
     CaseOut, CaseDetailOut, LineItemOut, QuotationOut, QuotationDetailOut,
     QuotationLineOut, OutboundMessageOut, EditRecommendationRequest, CaseSummaryOut,
-    EnquiryEmailOut, StatusHistoryEntry,
+    EnquiryEmailOut, StatusHistoryEntry, EmailUpdateRequest,
 )
 router = APIRouter(prefix="/api", tags=["cases"], dependencies=[Depends(get_current_user)])
 
@@ -422,3 +422,23 @@ def enquiry_email(case_id: int, db: Session = Depends(get_db)):
         subject=msg.subject, sender_email=msg.sender_email,
         body_text=msg.body_text, received_at=msg.received_at,
     )
+
+@router.patch("/cases/{case_id}/quotation/email", response_model=OutboundMessageOut)
+def update_draft_email(case_id: int, payload: EmailUpdateRequest, db: Session = Depends(get_db)):
+    outbound = (
+        db.query(OutboundMessage)
+        .filter_by(case_id=case_id)
+        .order_by(OutboundMessage.created_at.desc())
+        .first()
+    )
+    if outbound is None:
+        raise HTTPException(404, "No draft email found for this case")
+
+    if payload.subject is not None:
+        outbound.subject = payload.subject
+    if payload.body_text is not None:
+        outbound.body_text = payload.body_text
+
+    db.commit()
+    db.refresh(outbound)
+    return OutboundMessageOut.model_validate(outbound)
