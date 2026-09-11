@@ -1,5 +1,6 @@
 import os
-
+from datetime import datetime as _dt
+from decimal import Decimal
 from fastapi import APIRouter, Depends, HTTPException
 from fastapi.responses import FileResponse
 from sqlalchemy.orm import Session, joinedload
@@ -8,21 +9,26 @@ from sqlalchemy import func
 from app.database import get_db
 from app.deps import get_current_user
 from app.models.inquiry_case import InquiryCase, CaseStatusHistory
+from app.models.document import InquiryDocument
 from app.models.extract import ExtractedLineItem
 from app.models.match import ProductRecommendation
 from app.models.quotation import QuotationDraft, QuotationLine
 from app.models.outbound import OutboundMessage
 from app.models.email import EmailMessage
+from app.models.pricing import PricingSnapshot, PricingLine
+from app.ai_client import identify_product
 from app.quotation_builder import build_quotation_docx, draft_email_text, QUOTATIONS_DIR
 from app.schemas import (
     CaseOut, CaseDetailOut, LineItemOut, QuotationOut, QuotationDetailOut,
     QuotationLineOut, OutboundMessageOut, EditRecommendationRequest, CaseSummaryOut,
-    EnquiryEmailOut, StatusHistoryEntry, EmailUpdateRequest,
+    EnquiryEmailOut, StatusHistoryEntry, EmailUpdateRequest, RevisionSummary, QtnGroupOut,
+    QuotationLineUpdateRequest, DocumentOut, PricingUpdateRequest, PricingSnapshotOut, PricingLineOut,
 )
+
 router = APIRouter(prefix="/api", tags=["cases"], dependencies=[Depends(get_current_user)])
 
 
-# ---------- helpers (same logic as the Flask version, framework-agnostic) ----------
+# ---------- helpers ----------
 
 def _top_recommendation(line_item):
     if not line_item.recommendations:
@@ -35,6 +41,7 @@ def _top_recommendation(line_item):
 
 def _line_item_to_out(item) -> LineItemOut:
     return LineItemOut.model_validate(item)
+
 
 def _case_to_out(c) -> CaseOut:
     history = sorted(c.status_history, key=lambda h: h.changed_at) if c.status_history else []
@@ -50,7 +57,11 @@ def _case_to_out(c) -> CaseOut:
     )
 
 
-def _maybe_generate_quotation(db: Session, case_id: int):
+def _maybe_create_quotation_draft(db: Session, case_id: int):
+    """Creates the QuotationDraft + QuotationLine rows once every line
+    item is approved — but does NOT generate the .docx yet. The
+    engineer reviews/edits the draft lines first (on the Quotation
+    page), then explicitly clicks 'Generate' to build the actual file."""
     case = db.get(InquiryCase, case_id)
     line_items = db.query(ExtractedLineItem).filter_by(case_id=case_id).all()
     if not line_items:
@@ -70,14 +81,6 @@ def _maybe_generate_quotation(db: Session, case_id: int):
         .first()
     )
     if existing is not None:
-        if case.status != "QUOTED":
-            old_status = case.status
-            case.status = "QUOTED"
-            db.add(CaseStatusHistory(
-                case_id=case.case_id, from_status=old_status, to_status="QUOTED",
-                changed_by="system-auto",
-            ))
-            db.commit()
         return existing
 
     revision_no = 0
@@ -88,7 +91,6 @@ def _maybe_generate_quotation(db: Session, case_id: int):
     db.add(draft)
     db.flush()
 
-    quote_lines = []
     for item in line_items:
         rec = _top_recommendation(item)
         spec_bits = [b for b in [item.moc, item.range_text, item.op_temp, item.op_pressure] if b]
@@ -101,11 +103,7 @@ def _maybe_generate_quotation(db: Session, case_id: int):
             technical_spec_text=", ".join(spec_bits) if spec_bits else None,
         )
         db.add(line)
-        quote_lines.append(line)
-    db.flush()
 
-    docx_rel_path = build_quotation_docx(case, quote_lines, revision_no)
-    draft.docx_blob_uri = docx_rel_path
     old_status = case.status
     case.status = "QUOTED"
     db.add(CaseStatusHistory(
@@ -113,13 +111,6 @@ def _maybe_generate_quotation(db: Session, case_id: int):
         changed_by="system-auto",
     ))
 
-    subject, body = draft_email_text(case, quote_lines)
-    outbound = OutboundMessage(
-        case_id=case_id, draft_id=draft.draft_id, channel="EMAIL",
-        to_emails=[case.customer.email] if case.customer and case.customer.email else None,
-        subject=subject, body_text=body, send_status="PENDING", created_by="system-auto",
-    )
-    db.add(outbound)
     db.commit()
     return draft
 
@@ -135,7 +126,7 @@ def review_queue(db: Session = Depends(get_db), current_user=Depends(get_current
         .options(joinedload(ExtractedLineItem.recommendations))
         .filter(
             ~ExtractedLineItem.recommendations.any(
-                ProductRecommendation.is_selected_by_engineer.is_(True)
+                ProductRecommendation.is_selected_by_engineer == True
             )
         )
     )
@@ -151,8 +142,6 @@ def review_queue(db: Session = Depends(get_db), current_user=Depends(get_current
             unique.append(item)
     return [_line_item_to_out(i) for i in unique]
 
-
-from datetime import datetime as _dt
 
 @router.get("/cases", response_model=list[CaseOut])
 def list_cases(
@@ -173,6 +162,7 @@ def list_cases(
     STATUS_PRIORITY = {"IN_REVIEW": 0, "RECEIVED": 1, "QUOTED": 2}
     cases = sorted(cases, key=lambda c: STATUS_PRIORITY.get(c.status, 1))
     return [_case_to_out(c) for c in cases]
+
 
 @router.get("/cases/{case_id}", response_model=CaseDetailOut)
 def case_detail(case_id: int, db: Session = Depends(get_db)):
@@ -212,7 +202,7 @@ def approve_recommendation(recommendation_id: int, db: Session = Depends(get_db)
 
     db.commit()
 
-    quotation = _maybe_generate_quotation(db, rec.case_id)
+    quotation = _maybe_create_quotation_draft(db, rec.case_id)
     return {
         "status": "approved",
         "model_code": rec.model_code or rec.family_code,
@@ -295,6 +285,84 @@ def quotation_detail(case_id: int, db: Session = Depends(get_db)):
     )
 
 
+@router.post("/cases/{case_id}/quotation/generate", response_model=QuotationDetailOut)
+def generate_quotation_document(case_id: int, db: Session = Depends(get_db)):
+    """Builds the actual .docx (and the draft email, first time only)
+    from the current QuotationLine rows. Called when the engineer is
+    happy with the draft (after reviewing/editing it) and clicks
+    'Generate'."""
+    case = db.get(InquiryCase, case_id)
+    if case is None:
+        raise HTTPException(404, "Case not found")
+
+    quotation = (
+        db.query(QuotationDraft).filter_by(case_id=case_id)
+        .order_by(QuotationDraft.revision_no.desc()).first()
+    )
+    if quotation is None:
+        raise HTTPException(404, "No quotation draft exists for this case yet")
+
+    lines = (
+        db.query(QuotationLine).filter_by(draft_id=quotation.draft_id)
+        .order_by(QuotationLine.line_no).all()
+    )
+
+    docx_rel_path = build_quotation_docx(case, lines, quotation.revision_no)
+    quotation.docx_blob_uri = docx_rel_path
+    quotation.status = "GENERATED"
+
+    outbound = db.query(OutboundMessage).filter_by(draft_id=quotation.draft_id).first()
+    if outbound is None:
+        subject, body = draft_email_text(case, lines)
+        outbound = OutboundMessage(
+            case_id=case_id, draft_id=quotation.draft_id, channel="EMAIL",
+            to_emails=[case.customer.email] if case.customer and case.customer.email else None,
+            subject=subject, body_text=body, send_status="PENDING", created_by="system-auto",
+        )
+        db.add(outbound)
+
+    db.commit()
+    db.refresh(quotation)
+
+    return QuotationDetailOut(
+        case=_case_to_out(case),
+        quotation=QuotationOut.model_validate(quotation),
+        lines=[QuotationLineOut.model_validate(l) for l in lines],
+        outbound=OutboundMessageOut.model_validate(outbound),
+    )
+
+
+@router.patch("/cases/{case_id}/quotation/lines/{line_item_id}", response_model=QuotationLineOut)
+def update_quotation_line(case_id: int, line_item_id: int, payload: QuotationLineUpdateRequest, db: Session = Depends(get_db)):
+    quotation = (
+        db.query(QuotationDraft).filter_by(case_id=case_id)
+        .order_by(QuotationDraft.revision_no.desc()).first()
+    )
+    if quotation is None:
+        raise HTTPException(404, "No quotation draft exists for this case")
+
+    line = (
+        db.query(QuotationLine)
+        .filter_by(draft_id=quotation.draft_id, line_item_id=line_item_id)
+        .first()
+    )
+    if line is None:
+        raise HTTPException(404, "Quotation line not found")
+
+    if payload.model_code is not None:
+        line.model_code = payload.model_code
+    if payload.description is not None:
+        line.description = payload.description
+    if payload.qty is not None:
+        line.qty = payload.qty
+    if payload.technical_spec_text is not None:
+        line.technical_spec_text = payload.technical_spec_text
+
+    db.commit()
+    db.refresh(line)
+    return QuotationLineOut.model_validate(line)
+
+
 @router.get("/quotations/download/{filename}")
 def download_quotation(filename: str):
     path = os.path.join(QUOTATIONS_DIR, filename)
@@ -331,7 +399,7 @@ def insights(db: Session = Depends(get_db), current_user=Depends(get_current_use
     if current_user.role != "ADMIN" and my_categories:
         under_review = under_review.filter(InquiryCase.category.in_(my_categories))
     under_review_count = (
-        under_review.filter(~ExtractedLineItem.recommendations.any(ProductRecommendation.is_selected_by_engineer.is_(True)))
+        under_review.filter(~ExtractedLineItem.recommendations.any(ProductRecommendation.is_selected_by_engineer == True))
         .distinct()
         .count()
     )
@@ -355,6 +423,7 @@ def insights(db: Session = Depends(get_db), current_user=Depends(get_current_use
 
     return result
 
+
 @router.get("/review-queue-cases", response_model=list[CaseSummaryOut])
 def review_queue_cases(db: Session = Depends(get_db), current_user=Depends(get_current_user)):
     """Grouped-by-case view for the new table UI — one row per case,
@@ -366,7 +435,7 @@ def review_queue_cases(db: Session = Depends(get_db), current_user=Depends(get_c
         .join(ExtractedLineItem.recommendations)
         .filter(
             ~ExtractedLineItem.recommendations.any(
-                ProductRecommendation.is_selected_by_engineer.is_(True)
+                ProductRecommendation.is_selected_by_engineer == True
             )
         )
         .distinct()
@@ -402,9 +471,9 @@ def review_queue_cases(db: Session = Depends(get_db), current_user=Depends(get_c
             has_rejected=has_rejected,
         ))
 
-    # Pending-only cases first, mixed next, fully-rejected cases pushed to the bottom.
     results.sort(key=lambda r: (not r.has_pending, r.has_rejected))
     return results
+
 
 @router.get("/cases/{case_id}/enquiry-email", response_model=EnquiryEmailOut)
 def enquiry_email(case_id: int, db: Session = Depends(get_db)):
@@ -422,6 +491,7 @@ def enquiry_email(case_id: int, db: Session = Depends(get_db)):
         subject=msg.subject, sender_email=msg.sender_email,
         body_text=msg.body_text, received_at=msg.received_at,
     )
+
 
 @router.patch("/cases/{case_id}/quotation/email", response_model=OutboundMessageOut)
 def update_draft_email(case_id: int, payload: EmailUpdateRequest, db: Session = Depends(get_db)):
@@ -442,3 +512,260 @@ def update_draft_email(case_id: int, payload: EmailUpdateRequest, db: Session = 
     db.commit()
     db.refresh(outbound)
     return OutboundMessageOut.model_validate(outbound)
+
+
+@router.get("/cases/{case_id}/revisions", response_model=QtnGroupOut)
+def case_revisions(case_id: int, db: Session = Depends(get_db)):
+    """
+    Returns every other revision of the same quotation number (same
+    qtnno + fyear), plus every document across ALL of those revisions
+    combined — matching how the ERP groups them (one QTN number can
+    have multiple enquiry revisions, each possibly with its own
+    attachments).
+    """
+    case = db.get(InquiryCase, case_id)
+    if case is None:
+        raise HTTPException(404, "Case not found")
+
+    if not case.qtnno or not case.fyear:
+        return QtnGroupOut(qtnno=case.qtnno, fyear=case.fyear, revisions=[], documents=[])
+
+    siblings = (
+        db.query(InquiryCase)
+        .filter_by(qtnno=case.qtnno, fyear=case.fyear)
+        .order_by(InquiryCase.revision_no)
+        .all()
+    )
+
+    revisions = [
+        RevisionSummary(
+            case_id=s.case_id, internal_ref=s.internal_ref, revision_no=s.revision_no,
+            status=s.status, enq_received_at=s.enq_received_at,
+        )
+        for s in siblings
+    ]
+
+    sibling_ids = [s.case_id for s in siblings]
+    docs = (
+        db.query(InquiryDocument)
+        .filter(InquiryDocument.case_id.in_(sibling_ids))
+        .order_by(InquiryDocument.created_at)
+        .all()
+    )
+
+    return QtnGroupOut(
+        qtnno=case.qtnno, fyear=case.fyear,
+        revisions=revisions,
+        documents=[DocumentOut.model_validate(d) for d in docs],
+    )
+
+
+@router.get("/cases/{case_id}/pricing", response_model=PricingSnapshotOut)
+def get_pricing(case_id: int, db: Session = Depends(get_db)):
+    snapshot = (
+        db.query(PricingSnapshot).filter_by(case_id=case_id)
+        .order_by(PricingSnapshot.entered_at.desc()).first()
+    )
+    if snapshot is None:
+        raise HTTPException(404, "No pricing has been entered for this case yet")
+    return PricingSnapshotOut(
+        pricing_id=snapshot.pricing_id, currency_code=snapshot.currency_code,
+        discount_pct=snapshot.discount_pct, tax_pct=snapshot.tax_pct,
+        freight_amount=snapshot.freight_amount, grand_total=snapshot.grand_total,
+        validity_days=snapshot.validity_days, notes=snapshot.notes,
+        entered_by=snapshot.entered_by,
+        lines=[PricingLineOut.model_validate(l) for l in snapshot.lines],
+    )
+
+
+@router.put("/cases/{case_id}/pricing", response_model=PricingSnapshotOut)
+def save_pricing(case_id: int, payload: PricingUpdateRequest, db: Session = Depends(get_db), current_user=Depends(get_current_user)):
+    case = db.get(InquiryCase, case_id)
+    if case is None:
+        raise HTTPException(404, "Case not found")
+
+    quotation = (
+        db.query(QuotationDraft).filter_by(case_id=case_id)
+        .order_by(QuotationDraft.revision_no.desc()).first()
+    )
+    if quotation is None:
+        raise HTTPException(404, "No quotation exists for this case yet")
+
+    snapshot = (
+        db.query(PricingSnapshot).filter_by(case_id=case_id)
+        .order_by(PricingSnapshot.entered_at.desc()).first()
+    )
+    if snapshot is None:
+        snapshot = PricingSnapshot(
+            case_id=case_id, draft_id=quotation.draft_id,
+            currency_code=payload.currency_code, entered_by=current_user.display_name,
+        )
+        db.add(snapshot)
+        db.flush()
+    else:
+        snapshot.currency_code = payload.currency_code
+        snapshot.entered_by = current_user.display_name
+        for old_line in list(snapshot.lines):
+            db.delete(old_line)
+        db.flush()
+
+    snapshot.discount_pct = payload.discount_pct
+    snapshot.tax_pct = payload.tax_pct
+    snapshot.freight_amount = payload.freight_amount
+    snapshot.validity_days = payload.validity_days
+    snapshot.notes = payload.notes
+
+    subtotal = Decimal("0")
+    quote_lines_by_line_item = {ql.line_item_id: ql for ql in db.query(QuotationLine).filter_by(draft_id=quotation.draft_id).all()}
+
+    for line_input in payload.lines:
+        ql = quote_lines_by_line_item.get(line_input.quote_line_id)
+        if ql is None:
+            continue
+
+        qty = Decimal("1")
+        if ql.qty:
+            try:
+                qty = Decimal(str(ql.qty))
+            except Exception:
+                qty = Decimal("1")
+
+        unit_price = line_input.unit_price or Decimal("0")
+        line_discount = line_input.discount_pct or Decimal("0")
+        line_total = unit_price * qty * (Decimal("1") - line_discount / Decimal("100"))
+
+        pricing_line = PricingLine(
+            pricing_id=snapshot.pricing_id, quote_line_id=ql.quote_line_id,
+            unit_price=unit_price, line_total=line_total, discount_pct=line_input.discount_pct,
+        )
+        db.add(pricing_line)
+        subtotal += line_total
+
+    discount = subtotal * (payload.discount_pct or Decimal("0")) / Decimal("100")
+    after_discount = subtotal - discount
+    tax = after_discount * (payload.tax_pct or Decimal("0")) / Decimal("100")
+    freight = payload.freight_amount or Decimal("0")
+    snapshot.grand_total = after_discount + tax + freight
+
+    quotation.pricing_blank = False
+
+    db.commit()
+    db.refresh(snapshot)
+
+    return PricingSnapshotOut(
+        pricing_id=snapshot.pricing_id, currency_code=snapshot.currency_code,
+        discount_pct=snapshot.discount_pct, tax_pct=snapshot.tax_pct,
+        freight_amount=snapshot.freight_amount, grand_total=snapshot.grand_total,
+        validity_days=snapshot.validity_days, notes=snapshot.notes,
+        entered_by=snapshot.entered_by,
+        lines=[PricingLineOut.model_validate(l) for l in snapshot.lines],
+    )
+
+
+@router.post("/cases/{case_id}/run-ai-match", response_model=dict)
+def run_ai_match(case_id: int, db: Session = Depends(get_db)):
+    case = db.get(InquiryCase, case_id)
+    if case is None:
+        raise HTTPException(404, "Case not found")
+
+    docs = db.query(InquiryDocument).filter_by(case_id=case_id).all()
+    if not docs:
+        raise HTTPException(400, "This case has no attached documents — the AI model requires at least one file to run.")
+
+    files_for_api = []
+    for doc in docs:
+        full_path = os.path.join(
+            os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__)))), "instance", doc.blob_uri,
+        )
+        if os.path.isfile(full_path):
+            with open(full_path, "rb") as f:
+                files_for_api.append((doc.file_name, f.read(), doc.content_type))
+
+    if not files_for_api:
+        raise HTTPException(400, "Attached documents could not be read from disk.")
+
+    email_msg = (
+        db.query(EmailMessage).filter_by(case_id=case_id, direction="INBOUND")
+        .order_by(EmailMessage.received_at.desc()).first()
+    )
+
+    result = identify_product(
+        files=files_for_api,
+        email_text=email_msg.body_text if email_msg else "",
+        subject=email_msg.subject if email_msg else "",
+        from_email=email_msg.sender_email if email_msg else "",
+    )
+
+    if result is None:
+        raise HTTPException(502, "Could not reach the AI matching service.")
+
+    decision = result.get("decision")
+    products = result.get("products", [])
+    matched_count = 0
+
+    if decision == "PRODUCTS_MATCHED" and products:
+        line_items = db.query(ExtractedLineItem).filter_by(case_id=case_id).all()
+        target_line_item = line_items[0] if line_items else None
+
+        if target_line_item is None:
+            target_line_item = ExtractedLineItem(
+                case_id=case_id, line_no=1,
+                description=result.get("search_query", "")[:500] or "AI-matched item",
+                qty=Decimal("1"), uom="NOS",
+            )
+            db.add(target_line_item)
+            db.flush()
+        else:
+            # Re-running AI match should reopen this item for review, even
+            # if it was previously approved/rejected — reset the old
+            # decision so the new suggestions actually show up in the
+            # Review Queue instead of being hidden as "already decided".
+            old_recs = db.query(ProductRecommendation).filter_by(line_item_id=target_line_item.line_item_id).all()
+            for old_rec in old_recs:
+                old_rec.is_selected_by_engineer = None
+
+        if case.status == "QUOTED":
+            old_status = case.status
+            case.status = "IN_REVIEW"
+            db.add(CaseStatusHistory(
+                case_id=case.case_id, from_status=old_status, to_status="IN_REVIEW",
+                changed_by="ai-rematch",
+            ))
+
+        for rank, family in enumerate(products[:5], start=1):
+            suggested_models = family.get("suggested_models") or []
+            if not suggested_models:
+                continue
+            top_model = suggested_models[0]
+            model_code = top_model.get("model_code")
+            if not model_code:
+                continue
+
+            confidence = family.get("confidence") or result.get("top_confidence") or 0.5
+            why_bits = family.get("why") or []
+            rationale = ", ".join(why_bits) if why_bits else "Matched by AI model."
+
+            if "?" in str(model_code):
+                missing = top_model.get("missing_segments") or []
+                if missing:
+                    rationale += " — incomplete code, still need: " + ", ".join(missing)
+                else:
+                    rationale += " — incomplete code, needs clarification."
+
+            rec = ProductRecommendation(
+                case_id=case_id, line_item_id=target_line_item.line_item_id, rank_no=rank,
+                match_level="A" if rank == 1 else "B",
+                model_code=str(model_code)[:120],
+                confidence=Decimal(str(confidence)),
+                rationale=rationale[:1000],
+            )
+            db.add(rec)
+            matched_count += 1
+
+    db.commit()
+
+    return {
+        "status": "done", "decision": decision,
+        "items_matched": matched_count,
+        "raw_message": result.get("message", ""),
+    }

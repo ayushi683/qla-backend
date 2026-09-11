@@ -14,7 +14,7 @@ class EmailThread(Base):
     case_id: Mapped[int | None] = mapped_column(
         ForeignKey("inquiry_case.case_id"), nullable=True, index=True
     )
-    graph_conversation_id: Mapped[str | None] = mapped_column(String(200), unique=True, nullable=True)
+    graph_conversation_id: Mapped[str | None] = mapped_column(String(200), nullable=True)
     subject_normalized: Mapped[str | None] = mapped_column(String(300), nullable=True)
     mailbox: Mapped[str] = mapped_column(String(120), nullable=False)
     first_message_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
@@ -37,7 +37,7 @@ class EmailMessage(Base):
     case_id: Mapped[int | None] = mapped_column(
         ForeignKey("inquiry_case.case_id"), nullable=True, index=True
     )
-    graph_message_id: Mapped[str | None] = mapped_column(String(200), unique=True, nullable=True)
+    graph_message_id: Mapped[str | None] = mapped_column(String(200), nullable=True)
     internet_message_id: Mapped[str | None] = mapped_column(String(300), nullable=True, index=True)
     in_reply_to: Mapped[str | None] = mapped_column(String(300), nullable=True)
     direction: Mapped[str] = mapped_column(String(10), nullable=False)

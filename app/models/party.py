@@ -11,7 +11,7 @@ class Party(Base):
 
     party_id: Mapped[int] = mapped_column(BigInteger, primary_key=True, autoincrement=True)
     party_type: Mapped[str] = mapped_column(String(30), nullable=False, index=True)
-    code: Mapped[str | None] = mapped_column(String(50), unique=True, nullable=True)
+    code: Mapped[str | None] = mapped_column(String(50), nullable=True)
     display_name: Mapped[str] = mapped_column(String(200), nullable=False)
     email: Mapped[str | None] = mapped_column(String(255), nullable=True)
     phone: Mapped[str | None] = mapped_column(String(50), nullable=True)
@@ -28,3 +28,5 @@ class Party(Base):
         back_populates="customer",
         foreign_keys="InquiryCase.customer_party_id",
     )
+
+

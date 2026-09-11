@@ -1,10 +1,10 @@
-import PdfViewerModal from "../components/PdfViewerModal";
 import { useState, useEffect } from "react";
 import { Link, useParams, useNavigate } from "react-router-dom";
 import { api } from "../api/client";
 import { formatDateTime } from "../utils/dateFormat";
 import { usePolling } from "../api/usePolling";
 import ProductMatchCard from "../components/ProductMatchCard";
+import PdfViewerModal from "../components/PdfViewerModal";
 
 function statusClass(status) {
   return `status-pill status-${(status || "").toLowerCase()}`;
@@ -55,6 +55,7 @@ export default function CaseDetail() {
   const [enquiryEmail, setEnquiryEmail] = useState(null);
   const [docsError, setDocsError] = useState("");
   const [viewingDoc, setViewingDoc] = useState(null);
+  const [revisionsData, setRevisionsData] = useState(null);
 
   useEffect(() => {
     api.caseDocuments(caseId)
@@ -65,6 +66,10 @@ export default function CaseDetail() {
         }
       })
       .catch((e) => setDocsError(e.message || "Could not load enquiry documents"));
+  }, [caseId]);
+
+  useEffect(() => {
+    api.caseRevisions(caseId).then(setRevisionsData).catch(() => setRevisionsData(null));
   }, [caseId]);
 
   async function handleDownloadDoc(doc) {
@@ -143,6 +148,61 @@ export default function CaseDetail() {
             )}
           </div>
 
+          {revisionsData && revisionsData.revisions && revisionsData.revisions.length > 1 && (
+            <div className="overview-card" style={{ marginBottom: 20 }}>
+              <h3 className="modal-section-heading">
+                All Revisions — QTN {revisionsData.qtnno} ({revisionsData.fyear})
+              </h3>
+              <table className="data-table">
+                <thead>
+                  <tr><th>Revision</th><th>Ref</th><th>Status</th><th>Received</th><th></th></tr>
+                </thead>
+                <tbody>
+                  {revisionsData.revisions.map((rev) => (
+                    <tr key={rev.case_id} style={rev.case_id === parseInt(caseId) ? { fontWeight: 700 } : {}}>
+                      <td>R{rev.revision_no}</td>
+                      <td>{rev.internal_ref}</td>
+                      <td><span className={statusClass(rev.status)}>{rev.status}</span></td>
+                      <td>{formatDateTime(rev.enq_received_at)}</td>
+                      <td>
+                        {rev.case_id === parseInt(caseId) ? (
+                          <span className="approved-note">Currently viewing</span>
+                        ) : (
+                          <Link className="link-btn" to={`/cases/${rev.case_id}`}>Open</Link>
+                        )}
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+
+              {revisionsData.documents && revisionsData.documents.length > 0 && (
+                <>
+                  <h3 className="modal-section-heading" style={{ marginTop: 18 }}>All Documents (across revisions)</h3>
+                  <div className="doc-list">
+                    {revisionsData.documents.map((doc) => (
+                      <div className="doc-row" key={doc.document_id}>
+                        <div className="doc-row-left">
+                          <span className="doc-icon">{docIcon(doc.content_type)}</span>
+                          <div>
+                            <div className="doc-name">{doc.file_name}</div>
+                            <div className="doc-meta">{formatBytes(doc.size_bytes)}</div>
+                          </div>
+                        </div>
+                        <div style={{ display: "flex", gap: 6 }}>
+                          {doc.content_type === "application/pdf" && (
+                            <button className="btn btn-small" onClick={() => setViewingDoc(doc)}>View</button>
+                          )}
+                          <button className="btn btn-small" onClick={() => handleDownloadDoc(doc)}>Download</button>
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                </>
+              )}
+            </div>
+          )}
+
           <div className="overview-card">
             <h3 className="modal-section-heading">Original Enquiry</h3>
             {docsError && <div className="flash flash-error">{docsError}</div>}
@@ -183,7 +243,7 @@ export default function CaseDetail() {
           </div>
         </div>
       )}
-  
+
       {tab === "items" && (
         <div>
           {caseData.line_items && caseData.line_items.length > 0 ? (
@@ -200,7 +260,8 @@ export default function CaseDetail() {
           )}
         </div>
       )}
-            {viewingDoc && (
+
+      {viewingDoc && (
         <PdfViewerModal
           path={`/api/documents/download/${viewingDoc.document_id}`}
           filename={viewingDoc.file_name}

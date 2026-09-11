@@ -42,6 +42,7 @@ class InquiryCase(Base):
     preby_party_id: Mapped[int | None] = mapped_column(ForeignKey("party.party_id"), nullable=True)
     project_name: Mapped[str | None] = mapped_column(String(200), nullable=True)
     category: Mapped[str | None] = mapped_column(String(120), nullable=True, index=True)
+    source_type: Mapped[str] = mapped_column(String(20), nullable = False, default = "NORMAL", index=True)
     # which business category this enquiry falls under — used to filter engineer dashboards
     enq_no_customer: Mapped[str | None] = mapped_column(String(80), nullable=True)
     enq_received_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)

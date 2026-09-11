@@ -55,7 +55,7 @@ class AppUser(Base):
     password_hash: Mapped[str | None] = mapped_column(String(255), nullable=True)
     # bcrypt/argon2 hash; NULL for Outlook-only users
 
-    outlook_oid: Mapped[str | None] = mapped_column(String(64), unique=True, nullable=True, index=True)
+    outlook_oid: Mapped[str | None] = mapped_column(String(64), nullable=True, index=True)
     # Microsoft Entra object id (oid) from Outlook / Graph token
     outlook_tenant_id: Mapped[str | None] = mapped_column(String(64), nullable=True)
     outlook_upn: Mapped[str | None] = mapped_column(String(255), nullable=True)

@@ -400,3 +400,5 @@ a { color: inherit; }
 .pdf-modal-panel { width: min(900px, 95vw); height: 85vh; }
 .pdf-modal-body { flex: 1; padding: 0; overflow: hidden; }
 .pdf-modal-iframe { width: 100%; height: 100%; border: none; }
+
+.pagination-dots { padding: 6px 4px; color: var(--muted); }

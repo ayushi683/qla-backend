@@ -48,11 +48,10 @@ export const api = {
   reviewQueueCases: () => request("/api/review-queue-cases"),
   cases: () => request("/api/cases"),
   caseDetail: (id) => request(`/api/cases/${id}`),
-  
-   listUsers: () => request("/api/users"),
+
+  listUsers: () => request("/api/users"),
   createUser: (payload) => request("/api/users", { method: "POST", body: payload }),
   updateUser: (userId, payload) => request(`/api/users/${userId}`, { method: "PATCH", body: payload }),
-
 
   approve: (recId) => request(`/api/recommendations/${recId}/approve`, { method: "POST" }),
   reject: (recId) => request(`/api/recommendations/${recId}/reject`, { method: "POST" }),
@@ -62,6 +61,10 @@ export const api = {
     request(`/api/line-items/${lineItemId}/pick/${recId}`, { method: "POST" }),
 
   quotationDetail: (caseId) => request(`/api/cases/${caseId}/quotation`),
+  generateQuotation: (caseId) => request(`/api/cases/${caseId}/quotation/generate`, { method: "POST" }),
+  updateQuotationLine: (caseId, lineItemId, payload) =>
+    request(`/api/cases/${caseId}/quotation/lines/${lineItemId}`, { method: "PATCH", body: payload }),
+  caseRevisions: (caseId) => request(`/api/cases/${caseId}/revisions`),
   updateDraftEmail: (caseId, payload) =>
     request(`/api/cases/${caseId}/quotation/email`, { method: "PATCH", body: payload }),
   quotationDownloadUrl: (filename) => {
@@ -69,10 +72,14 @@ export const api = {
     return `${API_BASE}/api/quotations/download/${encodeURIComponent(filename)}?_t=${token ? "1" : "0"}`;
   },
 
+  getPricing: (caseId) => request(`/api/cases/${caseId}/pricing`),
+  runAiMatch: (caseId) => request(`/api/cases/${caseId}/run-ai-match`, { method: "POST" }),
+  savePricing: (caseId, payload) => request(`/api/cases/${caseId}/pricing`, { method: "PUT", body: payload }),
+
   caseDocuments: (caseId) => request(`/api/cases/${caseId}/documents`),
   enquiryEmail: (caseId) => request(`/api/cases/${caseId}/enquiry-email`),
   documentDownloadUrl: (documentId) => `${API_BASE}/api/documents/download/${documentId}`,
-  
+
   // Fetches a file with the auth header and returns an in-memory blob URL,
   // for showing inside our own modal (instead of a new browser tab).
   getViewUrl: async (path) => {

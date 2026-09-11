@@ -34,7 +34,7 @@ class ProductRecommendation(Base):
 
     recommendation_id: Mapped[int] = mapped_column(BigInteger, primary_key=True, autoincrement=True)
     case_id: Mapped[int] = mapped_column(
-        ForeignKey("inquiry_case.case_id", ondelete="CASCADE"), nullable=False, index=True
+        ForeignKey("inquiry_case.case_id"), nullable=False, index=True
     )
     line_item_id: Mapped[int] = mapped_column(
         ForeignKey("extracted_line_item.line_item_id", ondelete="CASCADE"),

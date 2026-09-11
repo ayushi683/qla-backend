@@ -15,6 +15,19 @@ function confidenceClass(conf) {
   return "conf-low";
 }
 
+function getPageNumbers(current, total) {
+  const delta = 1;
+  const range = [];
+  for (let i = Math.max(2, current - delta); i <= Math.min(total - 1, current + delta); i++) {
+    range.push(i);
+  }
+  if (current - delta > 2) range.unshift("...");
+  if (current + delta < total - 1) range.push("...");
+  range.unshift(1);
+  if (total > 1) range.push(total);
+  return range;
+}
+
 export default function CasesList() {
   const { data: cases, loading, error } = usePolling(() => api.cases(), 12000);
   const [search, setSearch] = useState("");
@@ -22,6 +35,8 @@ export default function CasesList() {
   const [dateTo, setDateTo] = useState("");
   const [statusFilter, setStatusFilter] = useState("all");
   const [page, setPage] = useState(1);
+  const [aiRunningId, setAiRunningId] = useState(null);
+  const [aiResults, setAiResults] = useState({});
   const PAGE_SIZE = 12;
 
   const filtered = useMemo(() => {
@@ -58,6 +73,18 @@ export default function CasesList() {
   function clearDates() {
     setDateFrom("");
     setDateTo("");
+  }
+
+  async function handleRunAiMatch(caseId) {
+    setAiRunningId(caseId);
+    try {
+      const result = await api.runAiMatch(caseId);
+      setAiResults((prev) => ({ ...prev, [caseId]: result }));
+    } catch (e) {
+      setAiResults((prev) => ({ ...prev, [caseId]: { status: "error", raw_message: e.message } }));
+    } finally {
+      setAiRunningId(null);
+    }
   }
 
   return (
@@ -122,7 +149,33 @@ export default function CasesList() {
                       </span>
                     ) : "—"}
                   </td>
-                  <td><Link className="link-btn" to={`/cases/${c.case_id}`}>Open</Link></td>
+                  <td>
+                    <div style={{ display: "flex", flexDirection: "column", gap: 4 }}>
+                      <div>
+                        <Link className="link-btn" to={`/cases/${c.case_id}`}>Open</Link>
+                        {c.status === "QUOTED" && (
+                          <>
+                            {" · "}
+                            <Link className="link-btn" to={`/cases/${c.case_id}/quotation`}>View Quotation</Link>
+                          </>
+                        )}
+                      </div>
+                      <button
+                        className="btn btn-small"
+                        disabled={aiRunningId === c.case_id}
+                        onClick={() => handleRunAiMatch(c.case_id)}
+                      >
+                        {aiRunningId === c.case_id ? "Running… (~20s)" : "Run AI Match"}
+                      </button>
+                      {aiResults[c.case_id] && (
+                        <div style={{ fontSize: "0.72rem", color: aiResults[c.case_id].status === "error" ? "var(--danger)" : "var(--muted)" }}>
+                          {aiResults[c.case_id].status === "error"
+                            ? aiResults[c.case_id].raw_message
+                            : `${aiResults[c.case_id].decision} — ${aiResults[c.case_id].items_matched} matched`}
+                        </div>
+                      )}
+                    </div>
+                  </td>
                 </tr>
               ))}
             </tbody>
@@ -131,9 +184,13 @@ export default function CasesList() {
           {totalPages > 1 && (
             <div className="pagination">
               <button disabled={page === 1} onClick={() => setPage(page - 1)}>‹ Prev</button>
-              {Array.from({ length: totalPages }, (_, i) => i + 1).map((p) => (
-                <button key={p} className={p === page ? "active" : ""} onClick={() => setPage(p)}>{p}</button>
-              ))}
+              {getPageNumbers(page, totalPages).map((p, i) =>
+                p === "..." ? (
+                  <span key={"dots-" + i} className="pagination-dots">…</span>
+                ) : (
+                  <button key={p} className={p === page ? "active" : ""} onClick={() => setPage(p)}>{p}</button>
+                )
+              )}
               <button disabled={page === totalPages} onClick={() => setPage(page + 1)}>Next ›</button>
             </div>
           )}
