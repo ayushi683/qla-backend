@@ -74,6 +74,8 @@ class CaseOut(BaseModel):
     match_confidence: Optional[Decimal] = None
     customer_name: Optional[str] = None
     status_history: list[StatusHistoryEntry] = []
+    revision_no: int = 0
+    revision_count: int = 1
 
 
 class QuotationLineOut(BaseModel):

@@ -43,7 +43,7 @@ def _line_item_to_out(item) -> LineItemOut:
     return LineItemOut.model_validate(item)
 
 
-def _case_to_out(c) -> CaseOut:
+def _case_to_out(c, revision_count: int = 1) -> CaseOut:
     history = sorted(c.status_history, key=lambda h: h.changed_at) if c.status_history else []
     return CaseOut(
         case_id=c.case_id, internal_ref=c.internal_ref, status=c.status,
@@ -54,6 +54,8 @@ def _case_to_out(c) -> CaseOut:
             StatusHistoryEntry(from_status=h.from_status, to_status=h.to_status, changed_at=h.changed_at)
             for h in history
         ],
+        revision_no=c.revision_no or 0,
+        revision_count=revision_count,
     )
 
 
@@ -159,9 +161,32 @@ def list_cases(
     if date_to:
         query = query.filter(InquiryCase.enq_received_at <= _dt.fromisoformat(date_to + "T23:59:59"))
     cases = query.order_by(InquiryCase.created_at.desc()).all()
+
+    # Collapse quotation revisions (same qtnno + fyear) into a single
+    # row — only the latest revision is shown, with a revision_count
+    # so the frontend can display "R1 · 2 versions". Cases without a
+    # qtnno/fyear (demo/email-based cases) are shown individually.
+    revision_groups: dict[tuple, list] = {}
+    standalone = []
+    for c in cases:
+        if c.qtnno and c.fyear:
+            key = (c.qtnno, c.fyear)
+            revision_groups.setdefault(key, []).append(c)
+        else:
+            standalone.append(c)
+
+    grouped: list[tuple] = []
+    for members in revision_groups.values():
+        members.sort(key=lambda m: m.revision_no or 0)
+        latest = members[-1]
+        grouped.append((latest, len(members)))
+    for c in standalone:
+        grouped.append((c, 1))
+
     STATUS_PRIORITY = {"IN_REVIEW": 0, "RECEIVED": 1, "QUOTED": 2}
-    cases = sorted(cases, key=lambda c: STATUS_PRIORITY.get(c.status, 1))
-    return [_case_to_out(c) for c in cases]
+    grouped.sort(key=lambda pair: STATUS_PRIORITY.get(pair[0].status, 1))
+
+    return [_case_to_out(c, revision_count=rc) for c, rc in grouped]
 
 
 @router.get("/cases/{case_id}", response_model=CaseDetailOut)
