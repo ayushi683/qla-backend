@@ -1,5 +1,9 @@
-import { useState } from "react";
+import { useState, useMemo } from "react";
 import { api } from "../api/client";
+
+function formatCurrency(n) {
+  return `₹${(Number(n) || 0).toLocaleString("en-IN", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
+}
 
 export default function GenerateQuotationModal({ caseId, lines: initialLines, onClose, onGenerated }) {
   const [lines, setLines] = useState(
@@ -15,11 +19,20 @@ export default function GenerateQuotationModal({ caseId, lines: initialLines, on
     setLines(lines.map((l) => (l.line_item_id === lineItemId ? { ...l, [field]: value } : l)));
   }
 
+  const totals = useMemo(() => {
+    const subtotal = lines.reduce((sum, l) => sum + (Number(l._unitPrice) || 0) * (Number(l.qty) || 0), 0);
+    const discountAmt = subtotal * ((Number(discountPct) || 0) / 100);
+    const afterDiscount = subtotal - discountAmt;
+    const taxAmt = afterDiscount * ((Number(taxPct) || 0) / 100);
+    const freight = Number(freightAmount) || 0;
+    const grandTotal = afterDiscount + taxAmt + freight;
+    return { subtotal, discountAmt, taxAmt, freight, grandTotal };
+  }, [lines, discountPct, taxPct, freightAmount]);
+
   async function handleApproveAndGenerate() {
     setSaving(true);
     setError("");
     try {
-      // Save any edits to the line items (model/description/qty/spec).
       for (const l of lines) {
         await api.updateQuotationLine(caseId, l.line_item_id, {
           model_code: l.model_code, description: l.description,
@@ -27,7 +40,6 @@ export default function GenerateQuotationModal({ caseId, lines: initialLines, on
         });
       }
 
-      // Save pricing.
       await api.savePricing(caseId, {
         currency_code: "INR",
         discount_pct: discountPct || 0,
@@ -39,7 +51,6 @@ export default function GenerateQuotationModal({ caseId, lines: initialLines, on
         })),
       });
 
-      // Generate the actual document.
       const result = await api.generateQuotation(caseId);
       onGenerated(result);
     } catch (e) {
@@ -51,65 +62,73 @@ export default function GenerateQuotationModal({ caseId, lines: initialLines, on
 
   return (
     <div className="modal-overlay" onClick={onClose}>
-      <div className="modal-panel" style={{ width: "min(800px, 95vw)" }} onClick={(e) => e.stopPropagation()}>
-        <div className="modal-header">
-          <span className="modal-case-ref">Review & Generate Quotation</span>
-          <button className="modal-close" onClick={onClose}>×</button>
+      <div className="modal-panel qgm-panel" onClick={(e) => e.stopPropagation()}>
+        <div className="qgm-header">
+          <div>
+            <h3 className="qgm-title">Review and generate quotation</h3>
+          </div>
+          <button className="qgm-close" onClick={onClose} aria-label="Close">×</button>
         </div>
 
-        <div className="modal-body">
+        <div className="qgm-body">
           {error && <div className="flash flash-error">{error}</div>}
 
-          <h3 className="modal-section-heading">Line Items</h3>
-          <table className="data-table" style={{ marginBottom: 20 }}>
-            <thead>
-              <tr><th>Model</th><th>Description</th><th>Qty</th><th>Unit Price (₹)</th></tr>
-            </thead>
-            <tbody>
-              {lines.map((l) => (
-                <tr key={l.line_item_id}>
-                  <td>
-                    <input value={l.model_code || ""} onChange={(e) => updateLineField(l.line_item_id, "model_code", e.target.value)}
-                      style={{ width: 130, padding: 6, border: "1px solid var(--border)", borderRadius: 6 }} />
-                  </td>
-                  <td>
-                    <input value={l.description || ""} onChange={(e) => updateLineField(l.line_item_id, "description", e.target.value)}
-                      style={{ width: "100%", padding: 6, border: "1px solid var(--border)", borderRadius: 6 }} />
-                  </td>
-                  <td>
-                    <input value={l.qty || ""} onChange={(e) => updateLineField(l.line_item_id, "qty", e.target.value)}
-                      style={{ width: 60, padding: 6, border: "1px solid var(--border)", borderRadius: 6 }} />
-                  </td>
-                  <td>
-                    <input type="number" value={l._unitPrice} onChange={(e) => updateLineField(l.line_item_id, "_unitPrice", e.target.value)}
-                      style={{ width: 100, padding: 6, border: "1px solid var(--border)", borderRadius: 6 }} placeholder="0.00" />
-                  </td>
-                </tr>
-              ))}
-            </tbody>
-          </table>
+          <p className="qgm-section-label">Line items</p>
+          <div className="qgm-table-wrap">
+            <table className="qgm-table">
+              <thead>
+                <tr><th>Model</th><th>Description</th><th>Qty</th><th>Unit price</th></tr>
+              </thead>
+              <tbody>
+                {lines.map((l) => (
+                  <tr key={l.line_item_id}>
+                    <td>
+                      <input value={l.model_code || ""} onChange={(e) => updateLineField(l.line_item_id, "model_code", e.target.value)} />
+                    </td>
+                    <td>
+                      <input value={l.description || ""} onChange={(e) => updateLineField(l.line_item_id, "description", e.target.value)} />
+                    </td>
+                    <td>
+                      <input value={l.qty || ""} onChange={(e) => updateLineField(l.line_item_id, "qty", e.target.value)} className="qgm-qty" />
+                    </td>
+                    <td>
+                      <input type="number" value={l._unitPrice} onChange={(e) => updateLineField(l.line_item_id, "_unitPrice", e.target.value)} placeholder="0.00" />
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
 
-          <h3 className="modal-section-heading">Commercial Terms</h3>
-          <div style={{ display: "grid", gridTemplateColumns: "repeat(3, 1fr)", gap: 12, marginBottom: 10 }}>
+          <p className="qgm-section-label">Commercial terms</p>
+          <div className="qgm-terms-grid">
             <div>
-              <label style={{ display: "block", fontSize: "0.78rem", color: "var(--muted)", marginBottom: 4 }}>Discount %</label>
-              <input type="number" value={discountPct} onChange={(e) => setDiscountPct(e.target.value)} style={{ width: "100%", padding: 6, border: "1px solid var(--border)", borderRadius: 6 }} />
+              <label>Discount %</label>
+              <input type="number" value={discountPct} onChange={(e) => setDiscountPct(e.target.value)} placeholder="0" />
             </div>
             <div>
-              <label style={{ display: "block", fontSize: "0.78rem", color: "var(--muted)", marginBottom: 4 }}>Tax %</label>
-              <input type="number" value={taxPct} onChange={(e) => setTaxPct(e.target.value)} style={{ width: "100%", padding: 6, border: "1px solid var(--border)", borderRadius: 6 }} />
+              <label>Tax %</label>
+              <input type="number" value={taxPct} onChange={(e) => setTaxPct(e.target.value)} placeholder="18" />
             </div>
             <div>
-              <label style={{ display: "block", fontSize: "0.78rem", color: "var(--muted)", marginBottom: 4 }}>Freight (₹)</label>
-              <input type="number" value={freightAmount} onChange={(e) => setFreightAmount(e.target.value)} style={{ width: "100%", padding: 6, border: "1px solid var(--border)", borderRadius: 6 }} />
+              <label>Freight (₹)</label>
+              <input type="number" value={freightAmount} onChange={(e) => setFreightAmount(e.target.value)} placeholder="0" />
             </div>
+          </div>
+
+          <div className="qgm-totals">
+            <div className="qgm-totals-row"><span>Subtotal</span><span>{formatCurrency(totals.subtotal)}</span></div>
+            <div className="qgm-totals-row"><span>Discount</span><span>−{formatCurrency(totals.discountAmt)}</span></div>
+            <div className="qgm-totals-row"><span>Tax</span><span>+{formatCurrency(totals.taxAmt)}</span></div>
+            <div className="qgm-totals-row"><span>Freight</span><span>+{formatCurrency(totals.freight)}</span></div>
+            <div className="qgm-totals-row qgm-grand-total"><span>Grand total</span><span>{formatCurrency(totals.grandTotal)}</span></div>
           </div>
         </div>
 
-        <div className="modal-footer">
-          <button className="btn btn-edit" onClick={onClose} disabled={saving}>Cancel</button>
-          <button className="btn btn-approve" onClick={handleApproveAndGenerate} disabled={saving} style={{ marginLeft: 8 }}>
-            {saving ? "Generating…" : "✓ Approve & Generate"}
+        <div className="qgm-footer">
+          <button className="btn btn-outline" onClick={onClose} disabled={saving}>Cancel</button>
+          <button className="btn qgm-primary" onClick={handleApproveAndGenerate} disabled={saving}>
+            {saving ? "Generating…" : "✓ Approve and generate"}
           </button>
         </div>
       </div>

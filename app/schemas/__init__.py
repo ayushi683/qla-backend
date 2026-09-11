@@ -77,7 +77,6 @@ class CaseOut(BaseModel):
     revision_no: int = 0
     revision_count: int = 1
 
-
 class QuotationLineOut(BaseModel):
     model_config = _CONFIG
     line_item_id: int
@@ -145,6 +144,7 @@ class OutboundMessageOut(BaseModel):
     subject: Optional[str] = None
     body_text: Optional[str] = None
     send_status: str
+    sent_at: Optional[datetime] = None
 
 
 class CaseDetailOut(CaseOut):
@@ -174,6 +174,10 @@ class CaseSummaryOut(BaseModel):
     top_confidence: Optional[Decimal] = None
     has_pending: bool
     has_rejected: bool
+    source_type: str = "NORMAL"
+    category: Optional[str] = None
+    status: str = "RECEIVED"
+    enq_received_at: Optional[datetime] = None
 
 class EnquiryEmailOut(BaseModel):
     model_config = _CONFIG
@@ -302,3 +306,27 @@ class PricingSnapshotOut(BaseModel):
     notes: Optional[str] = None
     entered_by: str
     lines: list[PricingLineOut] = []
+
+class CommunicationEntry(BaseModel):
+    entry_type: str  # "ENQUIRY_RECEIVED" | "QUOTATION_SENT" | "QUOTATION_DRAFTED"
+    revision_no: int = 0
+    subject: Optional[str] = None
+    from_email: Optional[str] = None
+    to_emails: Optional[list] = None
+    body_text: Optional[str] = None
+    timestamp: Optional[datetime] = None
+    is_current_revision: bool = True
+
+class BulkAiMatchRequest(BaseModel):
+    case_ids: list[int]
+
+
+class BulkAiMatchResultItem(BaseModel):
+    case_id: int
+    status: str
+    items_matched: int = 0
+    error: Optional[str] = None
+
+
+class BulkAiMatchResponse(BaseModel):
+    results: list[BulkAiMatchResultItem]

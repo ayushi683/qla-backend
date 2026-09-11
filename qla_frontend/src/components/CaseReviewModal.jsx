@@ -123,10 +123,10 @@ export default function CaseReviewModal({ caseId, onClose, onChanged, onRejected
                   item={item}
                   onChanged={handleChanged}
                   onRejected={onRejected}
-                  onQuotationReady={() => {
-                    onClose();
-                    navigate(`/cases/${caseId}/quotation`);
-                  }}
+                onQuotationReady={() => {
+                  onClose();
+                  navigate(`/cases/${caseId}`);
+                }}
                 />
               ))
             ) : (

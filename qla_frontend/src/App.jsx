@@ -1,12 +1,12 @@
 import { BrowserRouter, Routes, Route, Navigate } from "react-router-dom";
 import { AuthProvider, useAuth } from "./context/AuthContext";
-import Topbar from "./components/Topbar";
+import Sidebar from "./components/Sidebar";
 import Login from "./pages/Login";
 import ReviewQueue from "./pages/ReviewQueue";
 import CasesList from "./pages/CasesList";
 import CaseDetail from "./pages/CaseDetail";
-import QuotationDetail from "./pages/QuotationDetail";
 import UsersManagement from "./pages/UsersManagement";
+import Dashboard from "./pages/Dashboard";
 
 function RequireAuth({ children }) {
   const { user } = useAuth();
@@ -16,10 +16,10 @@ function RequireAuth({ children }) {
 
 function Layout({ children }) {
   return (
-    <>
-      <Topbar />
-      {children}
-    </>
+    <div className="app-shell">
+      <Sidebar />
+      <main className="app-content">{children}</main>
+    </div>
   );
 }
 
@@ -52,14 +52,6 @@ function AppRoutes() {
         }
       />
       <Route
-        path="/cases/:caseId/quotation"
-        element={
-          <RequireAuth>
-            <Layout><QuotationDetail /></Layout>
-          </RequireAuth>
-        }
-      />
-      <Route
         path="/users"
         element={
           <RequireAuth>
@@ -67,6 +59,16 @@ function AppRoutes() {
           </RequireAuth>
         }
       />
+
+            <Route
+        path="/dashboard"
+        element={
+          <RequireAuth>
+            <Layout><Dashboard /></Layout>
+          </RequireAuth>
+        }
+      />
+      
       <Route path="*" element={<Navigate to="/" replace />} />
     </Routes>
   );

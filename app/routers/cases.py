@@ -1,5 +1,5 @@
 import os
-from datetime import datetime as _dt
+from datetime import datetime as _dt, timezone
 from decimal import Decimal
 from fastapi import APIRouter, Depends, HTTPException
 from fastapi.responses import FileResponse
@@ -23,6 +23,7 @@ from app.schemas import (
     QuotationLineOut, OutboundMessageOut, EditRecommendationRequest, CaseSummaryOut,
     EnquiryEmailOut, StatusHistoryEntry, EmailUpdateRequest, RevisionSummary, QtnGroupOut,
     QuotationLineUpdateRequest, DocumentOut, PricingUpdateRequest, PricingSnapshotOut, PricingLineOut,
+    CommunicationEntry, BulkAiMatchRequest, BulkAiMatchResponse, BulkAiMatchResultItem,
 )
 
 router = APIRouter(prefix="/api", tags=["cases"], dependencies=[Depends(get_current_user)])
@@ -209,13 +210,15 @@ def case_detail(case_id: int, db: Session = Depends(get_db)):
 
 
 @router.post("/recommendations/{recommendation_id}/approve", response_model=dict)
-def approve_recommendation(recommendation_id: int, db: Session = Depends(get_db)):
+def approve_recommendation(recommendation_id: int, db: Session = Depends(get_db), current_user=Depends(get_current_user)):
     rec = db.get(ProductRecommendation, recommendation_id)
     if rec is None:
         raise HTTPException(404, "Recommendation not found")
     siblings = db.query(ProductRecommendation).filter_by(line_item_id=rec.line_item_id).all()
     for sib in siblings:
         sib.is_selected_by_engineer = sib.recommendation_id == rec.recommendation_id
+        if sib.recommendation_id == rec.recommendation_id:
+            sib.decided_by = current_user.display_name
 
     case = db.get(InquiryCase, rec.case_id)
     if case and case.status == "RECEIVED":
@@ -236,11 +239,12 @@ def approve_recommendation(recommendation_id: int, db: Session = Depends(get_db)
 
 
 @router.post("/recommendations/{recommendation_id}/reject", response_model=dict)
-def reject_recommendation(recommendation_id: int, db: Session = Depends(get_db)):
+def reject_recommendation(recommendation_id: int, db: Session = Depends(get_db), current_user=Depends(get_current_user)):
     rec = db.get(ProductRecommendation, recommendation_id)
     if rec is None:
         raise HTTPException(404, "Recommendation not found")
     rec.is_selected_by_engineer = False
+    rec.decided_by = current_user.display_name
 
     case = db.get(InquiryCase, rec.case_id)
     if case and case.status == "RECEIVED":
@@ -438,6 +442,11 @@ def insights(db: Session = Depends(get_db), current_user=Depends(get_current_use
         "under_review": under_review_count,
     }
 
+    decided_recs = db.query(ProductRecommendation).filter(ProductRecommendation.is_selected_by_engineer.isnot(None)).all()
+    total_decided = len(decided_recs)
+    total_rejected = sum(1 for r in decided_recs if r.is_selected_by_engineer is False)
+    result["rejection_rate"] = round((total_rejected / total_decided * 100), 1) if total_decided > 0 else 0
+
     if current_user.role == "ADMIN":
         category_rows = (
             db.query(InquiryCase.category, func.count(InquiryCase.case_id))
@@ -445,6 +454,20 @@ def insights(db: Session = Depends(get_db), current_user=Depends(get_current_use
             .all()
         )
         result["by_category"] = [{"category": c or "Unassigned", "count": n} for c, n in category_rows]
+
+        engineer_stats = {}
+        for r in decided_recs:
+            name = r.decided_by or "Unknown"
+            if name not in engineer_stats:
+                engineer_stats[name] = {"approved": 0, "rejected": 0}
+            if r.is_selected_by_engineer:
+                engineer_stats[name]["approved"] += 1
+            else:
+                engineer_stats[name]["rejected"] += 1
+        result["engineer_performance"] = [
+            {"engineer": name, "approved": stats["approved"], "rejected": stats["rejected"]}
+            for name, stats in engineer_stats.items()
+        ]
 
     return result
 
@@ -494,6 +517,9 @@ def review_queue_cases(db: Session = Depends(get_db), current_user=Depends(get_c
             top_confidence=max(confidences) if confidences else None,
             has_pending=has_pending,
             has_rejected=has_rejected,
+            category=case.category,
+            status=case.status,
+            enq_received_at=case.enq_received_at,
         ))
 
     results.sort(key=lambda r: (not r.has_pending, r.has_rejected))
@@ -794,3 +820,184 @@ def run_ai_match(case_id: int, db: Session = Depends(get_db)):
         "items_matched": matched_count,
         "raw_message": result.get("message", ""),
     }
+
+@router.post("/cases/{case_id}/quotation/email/send", response_model=OutboundMessageOut)
+def mark_quotation_email_sent(case_id: int, db: Session = Depends(get_db)):
+    """
+    Marks the draft email as sent. NOTE: this does NOT actually send
+    an email over SMTP/Graph API yet — that integration isn't wired up.
+    This lets the engineer confirm "I sent this externally (e.g. via
+    Outlook)" so the UI correctly shows the sent state instead of
+    misleadingly showing 'Draft / Pending' forever.
+    """
+    outbound = (
+        db.query(OutboundMessage)
+        .filter_by(case_id=case_id)
+        .order_by(OutboundMessage.created_at.desc())
+        .first()
+    )
+    if outbound is None:
+        raise HTTPException(404, "No draft email found for this case")
+
+    outbound.send_status = "SENT"
+    outbound.sent_at = _dt.now(timezone.utc)
+
+    db.commit()
+    db.refresh(outbound)
+    return OutboundMessageOut.model_validate(outbound)
+
+@router.get("/cases/{case_id}/communication", response_model=list[CommunicationEntry])
+def case_communication(case_id: int, db: Session = Depends(get_db)):
+    """
+    Combined communication timeline for a case — the original enquiry
+    email plus every quotation email (sent or drafted) across ALL
+    revisions of the same qtnno+fyear, so the Communication tab shows
+    the full history even when older revisions are technically
+    separate InquiryCase rows.
+    """
+    case = db.get(InquiryCase, case_id)
+    if case is None:
+        raise HTTPException(404, "Case not found")
+
+    if case.qtnno and case.fyear:
+        siblings = (
+            db.query(InquiryCase)
+            .filter_by(qtnno=case.qtnno, fyear=case.fyear)
+            .order_by(InquiryCase.revision_no)
+            .all()
+        )
+    else:
+        siblings = [case]
+
+    latest_revision_no = max((s.revision_no or 0) for s in siblings)
+    entries = []
+
+    for sibling in siblings:
+        inbound = (
+            db.query(EmailMessage)
+            .filter_by(case_id=sibling.case_id, direction="INBOUND")
+            .order_by(EmailMessage.received_at.desc())
+            .first()
+        )
+        if inbound:
+            entries.append(CommunicationEntry(
+                entry_type="ENQUIRY_RECEIVED", revision_no=sibling.revision_no or 0,
+                subject=inbound.subject, from_email=inbound.sender_email,
+                body_text=inbound.body_text, timestamp=inbound.received_at,
+                is_current_revision=(sibling.revision_no or 0) == latest_revision_no,
+            ))
+
+        outbounds = db.query(OutboundMessage).filter_by(case_id=sibling.case_id).all()
+        for ob in outbounds:
+            entries.append(CommunicationEntry(
+                entry_type="QUOTATION_SENT" if ob.send_status == "SENT" else "QUOTATION_DRAFTED",
+                revision_no=sibling.revision_no or 0,
+                subject=ob.subject, to_emails=ob.to_emails, body_text=ob.body_text,
+                timestamp=ob.sent_at or ob.created_at,
+                is_current_revision=(sibling.revision_no or 0) == latest_revision_no,
+            ))
+
+    entries.sort(key=lambda e: e.timestamp or _dt.min.replace(tzinfo=timezone.utc))
+    return entries
+
+def _run_ai_match_for_case(db: Session, case_id: int) -> BulkAiMatchResultItem:
+    """Shared logic used by both the single-case and bulk AI-match
+    endpoints — pulled into a function so we don't duplicate it."""
+    case = db.get(InquiryCase, case_id)
+    if case is None:
+        return BulkAiMatchResultItem(case_id=case_id, status="error", error="Case not found")
+
+    docs = db.query(InquiryDocument).filter_by(case_id=case_id).all()
+    if not docs:
+        return BulkAiMatchResultItem(case_id=case_id, status="error", error="No attached documents — AI model needs at least one file.")
+
+    files_for_api = []
+    for doc in docs:
+        full_path = os.path.join(
+            os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__)))), "instance", doc.blob_uri,
+        )
+        if os.path.isfile(full_path):
+            with open(full_path, "rb") as f:
+                files_for_api.append((doc.file_name, f.read(), doc.content_type))
+
+    if not files_for_api:
+        return BulkAiMatchResultItem(case_id=case_id, status="error", error="Attached documents could not be read from disk.")
+
+    email_msg = (
+        db.query(EmailMessage).filter_by(case_id=case_id, direction="INBOUND")
+        .order_by(EmailMessage.received_at.desc()).first()
+    )
+
+    result = identify_product(
+        files=files_for_api,
+        email_text=email_msg.body_text if email_msg else "",
+        subject=email_msg.subject if email_msg else "",
+        from_email=email_msg.sender_email if email_msg else "",
+    )
+
+    if result is None:
+        return BulkAiMatchResultItem(case_id=case_id, status="error", error="Could not reach the AI matching service.")
+
+    decision = result.get("decision")
+    products = result.get("products", [])
+    matched_count = 0
+
+    if decision == "PRODUCTS_MATCHED" and products:
+        line_items = db.query(ExtractedLineItem).filter_by(case_id=case_id).all()
+        target_line_item = line_items[0] if line_items else None
+
+        if target_line_item is None:
+            target_line_item = ExtractedLineItem(
+                case_id=case_id, line_no=1,
+                description=result.get("search_query", "")[:500] or "AI-matched item",
+                qty=Decimal("1"), uom="NOS",
+            )
+            db.add(target_line_item)
+            db.flush()
+        else:
+            old_recs = db.query(ProductRecommendation).filter_by(line_item_id=target_line_item.line_item_id).all()
+            for old_rec in old_recs:
+                old_rec.is_selected_by_engineer = None
+
+        if case.status == "QUOTED":
+            old_status = case.status
+            case.status = "IN_REVIEW"
+            db.add(CaseStatusHistory(
+                case_id=case.case_id, from_status=old_status, to_status="IN_REVIEW",
+                changed_by="ai-rematch",
+            ))
+
+        for rank, family in enumerate(products[:5], start=1):
+            suggested_models = family.get("suggested_models") or []
+            if not suggested_models:
+                continue
+            top_model = suggested_models[0]
+            model_code = top_model.get("model_code")
+            if not model_code:
+                continue
+
+            confidence = family.get("confidence") or result.get("top_confidence") or 0.5
+            why_bits = family.get("why") or []
+            rationale = ", ".join(why_bits) if why_bits else "Matched by AI model."
+            if "?" in str(model_code):
+                missing = top_model.get("missing_segments") or []
+                rationale += (" — incomplete code, still need: " + ", ".join(missing)) if missing else " — incomplete code, needs clarification."
+
+            rec = ProductRecommendation(
+                case_id=case_id, line_item_id=target_line_item.line_item_id, rank_no=rank,
+                match_level="A" if rank == 1 else "B",
+                model_code=str(model_code)[:120],
+                confidence=Decimal(str(confidence)),
+                rationale=rationale[:1000],
+            )
+            db.add(rec)
+            matched_count += 1
+
+    db.commit()
+    return BulkAiMatchResultItem(case_id=case_id, status="done", items_matched=matched_count)
+
+
+@router.post("/cases/bulk-ai-match", response_model=BulkAiMatchResponse)
+def bulk_ai_match(payload: BulkAiMatchRequest, db: Session = Depends(get_db)):
+    results = [_run_ai_match_for_case(db, cid) for cid in payload.case_ids]
+    return BulkAiMatchResponse(results=results)

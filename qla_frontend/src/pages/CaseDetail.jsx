@@ -5,17 +5,10 @@ import { formatDateTime } from "../utils/dateFormat";
 import { usePolling } from "../api/usePolling";
 import ProductMatchCard from "../components/ProductMatchCard";
 import PdfViewerModal from "../components/PdfViewerModal";
+import GenerateQuotationModal from "../components/GenerateQuotationModal";
 
 function statusClass(status) {
   return `status-pill status-${(status || "").toLowerCase()}`;
-}
-
-function confidenceClass(conf) {
-  if (conf === null || conf === undefined) return "conf-none";
-  const n = parseFloat(conf);
-  if (n >= 0.8) return "conf-high";
-  if (n >= 0.5) return "conf-mid";
-  return "conf-low";
 }
 
 function docIcon(contentType) {
@@ -42,6 +35,14 @@ function topRecommendation(item) {
   return [...recs].sort((a, b) => a.rank_no - b.rank_no)[0];
 }
 
+const TABS = [
+  { key: "overview", label: "Overview" },
+  { key: "products", label: "Products & Matching" },
+  { key: "quotation", label: "Quotation" },
+  { key: "communication", label: "Communication" },
+  { key: "history", label: "History" },
+];
+
 export default function CaseDetail() {
   const { caseId } = useParams();
   const navigate = useNavigate();
@@ -50,12 +51,25 @@ export default function CaseDetail() {
     12000
   );
 
-  const [tab, setTab] = useState("overview"); // overview | items
+  const [tab, setTab] = useState("overview");
   const [documents, setDocuments] = useState(null);
   const [enquiryEmail, setEnquiryEmail] = useState(null);
   const [docsError, setDocsError] = useState("");
   const [viewingDoc, setViewingDoc] = useState(null);
   const [revisionsData, setRevisionsData] = useState(null);
+  const [communication, setCommunication] = useState(null);
+  const [expandedComm, setExpandedComm] = useState(null);
+
+  // Quotation tab state
+  const [quotation, setQuotation] = useState(null);
+  const [quotationError, setQuotationError] = useState("");
+  const [downloading, setDownloading] = useState(false);
+  const [showGenerateModal, setShowGenerateModal] = useState(false);
+  const [editingEmail, setEditingEmail] = useState(false);
+  const [emailSubject, setEmailSubject] = useState("");
+  const [emailBody, setEmailBody] = useState("");
+  const [savingEmail, setSavingEmail] = useState(false);
+  const [sending, setSending] = useState(false);
 
   useEffect(() => {
     api.caseDocuments(caseId)
@@ -72,11 +86,83 @@ export default function CaseDetail() {
     api.caseRevisions(caseId).then(setRevisionsData).catch(() => setRevisionsData(null));
   }, [caseId]);
 
+  useEffect(() => {
+    api.caseCommunication(caseId).then(setCommunication).catch(() => setCommunication([]));
+  }, [caseId]);
+
+  function loadQuotation() {
+    api.quotationDetail(caseId)
+      .then((d) => { setQuotation(d); setQuotationError(""); })
+      .catch((e) => setQuotationError(e.message || "No quotation generated yet — approve every line item first."));
+  }
+
+  useEffect(() => {
+    loadQuotation();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [caseId]);
+
   async function handleDownloadDoc(doc) {
     try {
       await api.downloadBlob(`/api/documents/download/${doc.document_id}`, doc.file_name);
     } catch (e) {
       setDocsError(e.message || "Download failed");
+    }
+  }
+
+  function handleQuotationReady() {
+    refresh();
+    loadQuotation();
+    setTab("quotation");
+  }
+
+  async function handleDownloadQuotation() {
+    if (!quotation?.quotation?.docx_blob_uri) return;
+    const filename = quotation.quotation.docx_blob_uri.split("/").pop();
+    setDownloading(true);
+    try {
+      await api.downloadBlob(`/api/quotations/download/${filename}`, filename);
+    } catch (e) {
+      setQuotationError(e.message || "Download failed");
+    } finally {
+      setDownloading(false);
+    }
+  }
+
+  function handleGenerated(result) {
+    setQuotation(result);
+    setShowGenerateModal(false);
+  }
+
+  function startEditEmail() {
+    setEmailSubject(quotation.outbound.subject || "");
+    setEmailBody(quotation.outbound.body_text || "");
+    setEditingEmail(true);
+  }
+
+  async function handleSaveEmail(e) {
+    e.preventDefault();
+    setSavingEmail(true);
+    try {
+      await api.updateDraftEmail(caseId, { subject: emailSubject, body_text: emailBody });
+      setEditingEmail(false);
+      loadQuotation();
+    } catch (e) {
+      setQuotationError(e.message || "Failed to save email");
+    } finally {
+      setSavingEmail(false);
+    }
+  }
+
+  async function handleMarkSent() {
+    setSending(true);
+    try {
+      await api.markQuotationSent(caseId);
+      loadQuotation();
+      api.caseCommunication(caseId).then(setCommunication).catch(() => {});
+    } catch (e) {
+      setQuotationError(e.message || "Failed to mark as sent");
+    } finally {
+      setSending(false);
     }
   }
 
@@ -93,6 +179,8 @@ export default function CaseDetail() {
     return !top || top.is_selected_by_engineer !== true;
   }).length;
 
+  const isGenerated = quotation?.quotation?.status === "GENERATED" && quotation?.quotation?.docx_blob_uri;
+
   return (
     <div className="page">
       <Link className="back-link" to="/cases">&larr; All cases</Link>
@@ -102,35 +190,44 @@ export default function CaseDetail() {
           <div className="case-header">
             <h1 className="page-title">{caseData.internal_ref}</h1>
             <span className={statusClass(caseData.status)}>{caseData.status}</span>
+            {caseData.revision_count > 1 && (
+              <span className="state-pill" style={{ background: "var(--neutral-tint)", color: "var(--muted)" }}>
+                R{caseData.revision_no} · Current
+              </span>
+            )}
           </div>
           <p className="case-meta">
             {caseData.customer_name || "Unknown customer"}
             {caseData.project_name ? ` · ${caseData.project_name}` : ""}
           </p>
         </div>
-        {caseData.quotation && (
-          <button className="btn btn-approve" onClick={() => navigate(`/cases/${caseId}/quotation`)}>
-            View Quotation (Draft)
+        {isGenerated && (
+          <button className="btn btn-approve" onClick={() => setTab("quotation")}>
+            View Latest Quotation →
           </button>
         )}
       </div>
 
       <div className="detail-tabs">
-        <button className={`detail-tab ${tab === "overview" ? "active" : ""}`} onClick={() => setTab("overview")}>
-          Overview
-        </button>
-        <button className={`detail-tab ${tab === "items" ? "active" : ""}`} onClick={() => setTab("items")}>
-          Line Items ({caseData.line_items?.length || 0})
-        </button>
+        {TABS.map((t) => (
+          <button key={t.key} className={`detail-tab ${tab === t.key ? "active" : ""}`} onClick={() => setTab(t.key)}>
+            {t.label}
+          </button>
+        ))}
       </div>
 
+      {/* ---------- OVERVIEW ---------- */}
       {tab === "overview" && (
         <div>
           <div className="overview-card" style={{ marginBottom: 20 }}>
-            <h3 className="modal-section-heading">Case Summary</h3>
+            <h3 className="modal-section-heading">Case Information</h3>
             <dl className="summary-list">
               <div><dt>Customer / Project</dt><dd>{caseData.customer_name || "—"}{caseData.project_name ? ` · ${caseData.project_name}` : ""}</dd></div>
-              <div><dt>Received On</dt><dd>{formatDateTime(caseData.enq_received_at)}</dd></div>
+              <div><dt>Received</dt><dd>{formatDateTime(caseData.enq_received_at)}</dd></div>
+              <div><dt>Current Status</dt><dd><span className={statusClass(caseData.status)}>{caseData.status}</span></dd></div>
+              {caseData.revision_count > 1 && (
+                <div><dt>Current Version</dt><dd>R{caseData.revision_no} ({caseData.revision_count} versions)</dd></div>
+              )}
             </dl>
 
             {caseData.status_history && caseData.status_history.length > 0 && (
@@ -147,61 +244,6 @@ export default function CaseDetail() {
               </>
             )}
           </div>
-
-          {revisionsData && revisionsData.revisions && revisionsData.revisions.length > 1 && (
-            <div className="overview-card" style={{ marginBottom: 20 }}>
-              <h3 className="modal-section-heading">
-                All Revisions — QTN {revisionsData.qtnno} ({revisionsData.fyear})
-              </h3>
-              <table className="data-table">
-                <thead>
-                  <tr><th>Revision</th><th>Ref</th><th>Status</th><th>Received</th><th></th></tr>
-                </thead>
-                <tbody>
-                  {revisionsData.revisions.map((rev) => (
-                    <tr key={rev.case_id} style={rev.case_id === parseInt(caseId) ? { fontWeight: 700 } : {}}>
-                      <td>R{rev.revision_no}</td>
-                      <td>{rev.internal_ref}</td>
-                      <td><span className={statusClass(rev.status)}>{rev.status}</span></td>
-                      <td>{formatDateTime(rev.enq_received_at)}</td>
-                      <td>
-                        {rev.case_id === parseInt(caseId) ? (
-                          <span className="approved-note">Currently viewing</span>
-                        ) : (
-                          <Link className="link-btn" to={`/cases/${rev.case_id}`}>Open</Link>
-                        )}
-                      </td>
-                    </tr>
-                  ))}
-                </tbody>
-              </table>
-
-              {revisionsData.documents && revisionsData.documents.length > 0 && (
-                <>
-                  <h3 className="modal-section-heading" style={{ marginTop: 18 }}>All Documents (across revisions)</h3>
-                  <div className="doc-list">
-                    {revisionsData.documents.map((doc) => (
-                      <div className="doc-row" key={doc.document_id}>
-                        <div className="doc-row-left">
-                          <span className="doc-icon">{docIcon(doc.content_type)}</span>
-                          <div>
-                            <div className="doc-name">{doc.file_name}</div>
-                            <div className="doc-meta">{formatBytes(doc.size_bytes)}</div>
-                          </div>
-                        </div>
-                        <div style={{ display: "flex", gap: 6 }}>
-                          {doc.content_type === "application/pdf" && (
-                            <button className="btn btn-small" onClick={() => setViewingDoc(doc)}>View</button>
-                          )}
-                          <button className="btn btn-small" onClick={() => handleDownloadDoc(doc)}>Download</button>
-                        </div>
-                      </div>
-                    ))}
-                  </div>
-                </>
-              )}
-            </div>
-          )}
 
           <div className="overview-card">
             <h3 className="modal-section-heading">Original Enquiry</h3>
@@ -221,7 +263,7 @@ export default function CaseDetail() {
                     </div>
                     <div style={{ display: "flex", gap: 6 }}>
                       {doc.content_type === "application/pdf" && (
-                        <button className="btn btn-small" onClick={() => setViewingDoc(doc)}>View</button>
+                        <button className="btn btn-small" onClick={() => setViewingDoc(doc)}>Preview</button>
                       )}
                       <button className="btn btn-small" onClick={() => handleDownloadDoc(doc)}>Download</button>
                     </div>
@@ -244,19 +286,233 @@ export default function CaseDetail() {
         </div>
       )}
 
-      {tab === "items" && (
+      {/* ---------- PRODUCTS & MATCHING ---------- */}
+      {tab === "products" && (
         <div>
+          <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 12 }}>
+            <p className="page-sub" style={{ margin: 0 }}>{itemsToReview} of {caseData.line_items?.length || 0} items need a decision</p>
+          </div>
           {caseData.line_items && caseData.line_items.length > 0 ? (
             caseData.line_items.map((item) => (
               <ProductMatchCard
                 key={item.line_item_id}
                 item={item}
                 onChanged={refresh}
-                onQuotationReady={() => navigate(`/cases/${caseId}/quotation`)}
+                onQuotationReady={handleQuotationReady}
               />
             ))
           ) : (
             <div className="empty-state"><p>No extracted line items for this case yet.</p></div>
+          )}
+        </div>
+      )}
+
+      {/* ---------- QUOTATION ---------- */}
+      {tab === "quotation" && (
+        <div>
+          {quotationError ? (
+            <div className="flash flash-info">{quotationError}</div>
+          ) : !quotation ? (
+            <div className="loading-state">Loading…</div>
+          ) : (
+            <>
+              {!isGenerated ? (
+                <div className="quote-doc-card">
+                  <div className="quote-doc-head">
+                    <div>
+                      <div className="quote-doc-label">Status</div>
+                      <div className="quote-doc-filename">Draft — not generated yet</div>
+                    </div>
+                    <button className="btn btn-approve" onClick={() => setShowGenerateModal(true)}>
+                      Generate Quotation
+                    </button>
+                  </div>
+                  <p className="pricing-note">
+                    Click "Generate Quotation" to review line items, enter pricing, and approve before the final document is created.
+                  </p>
+                  <h3 className="modal-section-heading" style={{ marginTop: 18 }}>Line items (preview)</h3>
+                  <table className="data-table">
+                    <thead>
+                      <tr><th>#</th><th>Model</th><th>Description</th><th>Qty</th><th>Spec</th></tr>
+                    </thead>
+                    <tbody>
+                      {quotation.lines.map((line) => (
+                        <tr key={line.line_no}>
+                          <td>{line.line_no}</td>
+                          <td><code>{line.model_code || "—"}</code></td>
+                          <td>{line.description || "—"}</td>
+                          <td>{line.qty || "—"} {line.uom}</td>
+                          <td className="alt-rationale">{line.technical_spec_text || "—"}</td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                </div>
+              ) : (
+                <>
+                  <div className="quote-doc-card">
+                    <div className="quote-doc-head">
+                      <div>
+                        <div className="quote-doc-label">Generated document · R{quotation.quotation.revision_no}</div>
+                        <div className="quote-doc-filename">{quotation.quotation.docx_blob_uri.split("/").pop()}</div>
+                      </div>
+                      <button className="btn btn-edit" onClick={handleDownloadQuotation} disabled={downloading}>
+                        {downloading ? "Downloading…" : "Download .docx"}
+                      </button>
+                    </div>
+                  </div>
+
+                  <h3 className="modal-section-heading">Line Items</h3>
+                  <table className="data-table">
+                    <thead>
+                      <tr><th>#</th><th>Model</th><th>Description</th><th>Qty</th><th>Spec</th></tr>
+                    </thead>
+                    <tbody>
+                      {quotation.lines.map((line) => (
+                        <tr key={line.line_no}>
+                          <td>{line.line_no}</td>
+                          <td><code>{line.model_code || "—"}</code></td>
+                          <td>{line.description || "—"}</td>
+                          <td>{line.qty || "—"} {line.uom}</td>
+                          <td className="alt-rationale">{line.technical_spec_text || "—"}</td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+
+                  {quotation.outbound && (
+                    quotation.outbound.send_status === "SENT" ? (
+                      <>
+                        <h3 className="modal-section-heading" style={{ marginTop: 20 }}>Customer Communication</h3>
+                        <div className="email-draft-card">
+                          <div className="approved-note" style={{ fontSize: "0.95rem", marginBottom: 10 }}>✓ Quotation Sent</div>
+                          <div className="email-field"><span>To</span> {quotation.outbound.to_emails?.join(", ") || "—"}</div>
+                          <div className="email-field"><span>Subject</span> {quotation.outbound.subject}</div>
+                          <div className="email-field"><span>Sent</span> {quotation.outbound.sent_at ? new Date(quotation.outbound.sent_at).toLocaleString() : "—"}</div>
+                        </div>
+                      </>
+                    ) : (
+                      <>
+                        <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginTop: 20, marginBottom: 12 }}>
+                          <h3 className="modal-section-heading" style={{ margin: 0 }}>Quotation Ready — Email Draft Prepared</h3>
+                          <div style={{ display: "flex", gap: 8 }}>
+                            {!editingEmail && <button className="btn btn-edit" onClick={startEditEmail}>✎ Edit Email</button>}
+                            <button className="btn btn-approve" onClick={handleMarkSent} disabled={sending}>
+                              {sending ? "Marking…" : "Send Quotation"}
+                            </button>
+                          </div>
+                        </div>
+                        {editingEmail ? (
+                          <form className="email-draft-card" onSubmit={handleSaveEmail}>
+                            <label style={{ display: "block", fontSize: "0.78rem", color: "var(--muted)", marginBottom: 4 }}>Subject</label>
+                            <input value={emailSubject} onChange={(e) => setEmailSubject(e.target.value)}
+                              style={{ width: "100%", padding: "8px 10px", border: "1px solid var(--border)", borderRadius: 7, marginBottom: 14 }} />
+                            <label style={{ display: "block", fontSize: "0.78rem", color: "var(--muted)", marginBottom: 4 }}>Body</label>
+                            <textarea value={emailBody} onChange={(e) => setEmailBody(e.target.value)} rows={10}
+                              style={{ width: "100%", padding: "10px", border: "1px solid var(--border)", borderRadius: 7, resize: "vertical" }} />
+                            <div style={{ display: "flex", gap: 8, marginTop: 12 }}>
+                              <button type="submit" className="btn btn-save" disabled={savingEmail}>{savingEmail ? "Saving…" : "Save changes"}</button>
+                              <button type="button" className="btn btn-edit" onClick={() => setEditingEmail(false)}>Cancel</button>
+                            </div>
+                          </form>
+                        ) : (
+                          <div className="email-draft-card">
+                            <div className="email-field"><span>To</span> {quotation.outbound.to_emails?.join(", ") || "—"}</div>
+                            <div className="email-field"><span>Subject</span> {quotation.outbound.subject}</div>
+                            <hr />
+                            <pre className="email-body">{quotation.outbound.body_text}</pre>
+                          </div>
+                        )}
+                      </>
+                    )
+                  )}
+                </>
+              )}
+            </>
+          )}
+        </div>
+      )}
+
+      {/* ---------- COMMUNICATION ---------- */}
+      {tab === "communication" && (
+        <div>
+          {communication === null ? (
+            <div className="loading-state">Loading…</div>
+          ) : communication.length === 0 ? (
+            <div className="empty-state"><p>No communication history yet.</p></div>
+          ) : (
+            <div className="status-timeline">
+              {communication.map((entry, i) => (
+                <div key={i} className="overview-card" style={{ marginBottom: 10, padding: "12px 16px" }}>
+                  <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", cursor: "pointer" }}
+                    onClick={() => setExpandedComm(expandedComm === i ? null : i)}>
+                    <div>
+                      <span className="state-pill" style={{
+                        background: entry.entry_type === "QUOTATION_SENT" ? "var(--success-tint)" : entry.entry_type === "ENQUIRY_RECEIVED" ? "var(--neutral-tint)" : "var(--warn-tint)",
+                        color: entry.entry_type === "QUOTATION_SENT" ? "var(--success)" : entry.entry_type === "ENQUIRY_RECEIVED" ? "var(--muted)" : "var(--warn)",
+                      }}>
+                        {entry.entry_type === "ENQUIRY_RECEIVED" ? "Enquiry Received" : entry.entry_type === "QUOTATION_SENT" ? "Quotation Sent" : "Quotation Drafted"}
+                      </span>
+                      {!entry.is_current_revision && <span style={{ fontSize: "0.75rem", color: "var(--muted)", marginLeft: 8 }}>R{entry.revision_no} · Superseded</span>}
+                    </div>
+                    <span className="timeline-time">{formatDateTime(entry.timestamp)}</span>
+                  </div>
+                  {expandedComm === i && (
+                    <div style={{ marginTop: 10, paddingTop: 10, borderTop: "1px dashed var(--border)", fontSize: "0.85rem" }}>
+                      {entry.from_email && <div className="email-field"><span>From</span> {entry.from_email}</div>}
+                      {entry.to_emails && <div className="email-field"><span>To</span> {entry.to_emails.join(", ")}</div>}
+                      <div className="email-field"><span>Subject</span> {entry.subject || "—"}</div>
+                      <pre className="email-body" style={{ marginTop: 8 }}>{entry.body_text || "(no content)"}</pre>
+                    </div>
+                  )}
+                </div>
+              ))}
+            </div>
+          )}
+        </div>
+      )}
+
+      {/* ---------- HISTORY ---------- */}
+      {tab === "history" && (
+        <div>
+          <h3 className="modal-section-heading">Status History</h3>
+          {caseData.status_history && caseData.status_history.length > 0 ? (
+            <div className="status-timeline">
+              {caseData.status_history.map((h, i) => (
+                <div className="timeline-row" key={i}>
+                  <span className={`status-pill status-${h.to_status.toLowerCase()}`}>{h.from_status || "—"} → {h.to_status}</span>
+                  <span className="timeline-time">{formatDateTime(h.changed_at)}</span>
+                </div>
+              ))}
+            </div>
+          ) : (
+            <p className="no-recs">No history recorded yet.</p>
+          )}
+
+          {revisionsData && revisionsData.revisions && revisionsData.revisions.length > 1 && (
+            <>
+              <h3 className="modal-section-heading" style={{ marginTop: 24 }}>Quotation Revisions</h3>
+              <table className="data-table">
+                <thead>
+                  <tr><th>Revision</th><th>Ref</th><th>Status</th><th>Received</th><th></th></tr>
+                </thead>
+                <tbody>
+                  {revisionsData.revisions.slice().reverse().map((rev) => (
+                    <tr key={rev.case_id}>
+                      <td>R{rev.revision_no} {rev.case_id === parseInt(caseId) && <span style={{ color: "var(--success)", fontWeight: 700 }}>· Current</span>}</td>
+                      <td>{rev.internal_ref}</td>
+                      <td><span className={statusClass(rev.status)}>{rev.status}</span></td>
+                      <td>{formatDateTime(rev.enq_received_at)}</td>
+                      <td>
+                        {rev.case_id !== parseInt(caseId) && (
+                          <Link className="link-btn" to={`/cases/${rev.case_id}`}>View</Link>
+                        )}
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </>
           )}
         </div>
       )}
@@ -266,6 +522,15 @@ export default function CaseDetail() {
           path={`/api/documents/download/${viewingDoc.document_id}`}
           filename={viewingDoc.file_name}
           onClose={() => setViewingDoc(null)}
+        />
+      )}
+
+      {showGenerateModal && quotation && (
+        <GenerateQuotationModal
+          caseId={caseId}
+          lines={quotation.lines}
+          onClose={() => setShowGenerateModal(false)}
+          onGenerated={handleGenerated}
         />
       )}
     </div>

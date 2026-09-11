@@ -1,4 +1,4 @@
-import { useState, useEffect } from "react";
+import { useState, useEffect, useRef } from "react";
 import { api } from "../api/client";
 
 export default function UsersManagement() {
@@ -8,8 +8,9 @@ export default function UsersManagement() {
   const [newEmail, setNewEmail] = useState("");
   const [newName, setNewName] = useState("");
   const [newRole, setNewRole] = useState("ENGINEER");
-  const [newCategory, setNewCategory] = useState("");
   const [busy, setBusy] = useState(false);
+  const [openMenuId, setOpenMenuId] = useState(null);
+  const menuRef = useRef(null);
 
   async function load() {
     try {
@@ -22,15 +23,23 @@ export default function UsersManagement() {
 
   useEffect(() => { load(); }, []);
 
+  useEffect(() => {
+    function handleClickOutside(e) {
+      if (menuRef.current && !menuRef.current.contains(e.target)) {
+        setOpenMenuId(null);
+      }
+    }
+    document.addEventListener("mousedown", handleClickOutside);
+    return () => document.removeEventListener("mousedown", handleClickOutside);
+  }, []);
+
   async function handleAdd(e) {
     e.preventDefault();
     setBusy(true);
     setError("");
     try {
-      await api.createUser({
-        email: newEmail, display_name: newName, role: newRole,
-      });
-      setNewEmail(""); setNewName(""); setNewRole("ENGINEER"); setNewCategory("");
+      await api.createUser({ email: newEmail, display_name: newName, role: newRole });
+      setNewEmail(""); setNewName(""); setNewRole("ENGINEER");
       setShowAdd(false);
       load();
     } catch (e) {
@@ -47,6 +56,7 @@ export default function UsersManagement() {
     } catch (e) {
       setError(e.message || "Failed to update user");
     }
+    setOpenMenuId(null);
   }
 
   async function handleRoleChange(user, role) {
@@ -56,6 +66,7 @@ export default function UsersManagement() {
     } catch (e) {
       setError(e.message || "Failed to update user");
     }
+    setOpenMenuId(null);
   }
 
   return (
@@ -63,7 +74,7 @@ export default function UsersManagement() {
       <div className="page-head">
         <div>
           <h1 className="page-title">Users</h1>
-          <p className="page-sub">Manage who can access the admin panel.</p>
+          <p className="page-sub">Manage access and permissions.</p>
         </div>
         <button className="btn btn-approve" onClick={() => setShowAdd(!showAdd)}>
           {showAdd ? "Cancel" : "+ Add User"}
@@ -119,22 +130,33 @@ export default function UsersManagement() {
               <tr key={u.user_id}>
                 <td>{u.display_name}</td>
                 <td>{u.email}</td>
-                <td>
-                  <select value={u.role} onChange={(e) => handleRoleChange(u, e.target.value)} className="inline-select">
-                    <option value="ENGINEER">Engineer</option>
-                    <option value="ADMIN">Admin</option>
-                  </select>
-                </td>
+                <td>{u.role}</td>
                 <td>{u.category || "—"}</td>
                 <td>
                   <span className={`status-pill ${u.is_enabled ? "status-approved" : "status-received"}`}>
                     {u.is_enabled ? "Active" : "Disabled"}
                   </span>
                 </td>
-                <td>
-                  <button className="btn btn-small" onClick={() => handleToggleEnabled(u)}>
-                    {u.is_enabled ? "Disable" : "Enable"}
+                <td style={{ position: "relative" }}>
+                  <button
+                    className="action-menu-trigger"
+                    onClick={() => setOpenMenuId(openMenuId === u.user_id ? null : u.user_id)}
+                  >
+                    ⋮
                   </button>
+                  {openMenuId === u.user_id && (
+                    <div className="action-menu" ref={menuRef}>
+                      <button className="action-menu-item" onClick={() => handleRoleChange(u, u.role === "ADMIN" ? "ENGINEER" : "ADMIN")}>
+                        Change Role → {u.role === "ADMIN" ? "Engineer" : "Admin"}
+                      </button>
+                      <button
+                        className={`action-menu-item ${u.is_enabled ? "action-menu-danger" : ""}`}
+                        onClick={() => handleToggleEnabled(u)}
+                      >
+                        {u.is_enabled ? "Disable User" : "Enable User"}
+                      </button>
+                    </div>
+                  )}
                 </td>
               </tr>
             ))}

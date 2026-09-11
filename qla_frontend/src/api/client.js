@@ -43,7 +43,7 @@ export const api = {
   login: (email, password) =>
     request("/api/auth/login", { method: "POST", body: { email, password } }),
   me: () => request("/api/auth/me"),
-
+  caseCommunication: (caseId) => request(`/api/cases/${caseId}/communication`),
   reviewQueue: () => request("/api/review-queue"),
   reviewQueueCases: () => request("/api/review-queue-cases"),
   cases: () => request("/api/cases"),
@@ -65,8 +65,10 @@ export const api = {
   updateQuotationLine: (caseId, lineItemId, payload) =>
     request(`/api/cases/${caseId}/quotation/lines/${lineItemId}`, { method: "PATCH", body: payload }),
   caseRevisions: (caseId) => request(`/api/cases/${caseId}/revisions`),
+  caseCommunication: (caseId) => request(`/api/cases/${caseId}/communication`),
   updateDraftEmail: (caseId, payload) =>
     request(`/api/cases/${caseId}/quotation/email`, { method: "PATCH", body: payload }),
+  markQuotationSent: (caseId) => request(`/api/cases/${caseId}/quotation/email/send`, { method: "POST" }),
   quotationDownloadUrl: (filename) => {
     const token = getToken();
     return `${API_BASE}/api/quotations/download/${encodeURIComponent(filename)}?_t=${token ? "1" : "0"}`;
@@ -74,6 +76,8 @@ export const api = {
 
   getPricing: (caseId) => request(`/api/cases/${caseId}/pricing`),
   runAiMatch: (caseId) => request(`/api/cases/${caseId}/run-ai-match`, { method: "POST" }),
+  bulkAiMatch: (caseIds) => request("/api/cases/bulk-ai-match", { method: "POST", body: { case_ids: caseIds } }),
+  getInsights: () => request("/api/insights"),
   savePricing: (caseId, payload) => request(`/api/cases/${caseId}/pricing`, { method: "PUT", body: payload }),
 
   caseDocuments: (caseId) => request(`/api/cases/${caseId}/documents`),

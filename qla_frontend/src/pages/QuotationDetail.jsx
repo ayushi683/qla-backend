@@ -19,6 +19,7 @@ export default function QuotationDetail() {
   const [subject, setSubject] = useState("");
   const [bodyText, setBodyText] = useState("");
   const [saving, setSaving] = useState(false);
+  const [sending, setSending] = useState(false);
 
   function load() {
     api.quotationDetail(caseId)
@@ -48,6 +49,19 @@ export default function QuotationDetail() {
   function handleGenerated(result) {
     setData(result);
     setShowGenerateModal(false);
+  }
+
+  async function handleMarkSent() {
+    setSending(true);
+    setError("");
+    try {
+      await api.markQuotationSent(caseId);
+      load();
+    } catch (e) {
+      setError(e.message || "Failed to mark as sent");
+    } finally {
+      setSending(false);
+    }
   }
 
   function startEditEmail() {
@@ -191,43 +205,63 @@ export default function QuotationDetail() {
 
       {outbound && isGenerated && (
         <>
-          <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginTop: 26, marginBottom: 12 }}>
-            <h2 className="section-heading" style={{ margin: 0 }}>Draft email</h2>
-            {!editing && (
-              <button className="btn btn-approve" onClick={startEditEmail} style={{ padding: "8px 18px" }}>
-                ✎ Edit Email
-              </button>
-            )}
-          </div>
-
-          {editing ? (
-            <form className="email-draft-card" onSubmit={handleSaveEmail}>
-              <label style={{ display: "block", fontSize: "0.78rem", color: "var(--muted)", marginBottom: 4 }}>Subject</label>
-              <input
-                type="text" value={subject} onChange={(e) => setSubject(e.target.value)}
-                style={{ width: "100%", padding: "8px 10px", border: "1px solid var(--border)", borderRadius: 7, marginBottom: 14, fontFamily: "inherit", fontSize: "0.9rem" }}
-              />
-              <label style={{ display: "block", fontSize: "0.78rem", color: "var(--muted)", marginBottom: 4 }}>Body</label>
-              <textarea
-                value={bodyText} onChange={(e) => setBodyText(e.target.value)} rows={12}
-                style={{ width: "100%", padding: "10px", border: "1px solid var(--border)", borderRadius: 7, fontFamily: "inherit", fontSize: "0.9rem", resize: "vertical" }}
-              />
-              <div style={{ display: "flex", gap: 8, marginTop: 12 }}>
-                <button type="submit" className="btn btn-save" disabled={saving}>{saving ? "Saving…" : "Save changes"}</button>
-                <button type="button" className="btn btn-edit" onClick={() => setEditing(false)}>Cancel</button>
+          {outbound.send_status === "SENT" ? (
+            <>
+              <h2 className="section-heading">Customer Communication</h2>
+              <div className="email-draft-card">
+                <div className="approved-note" style={{ fontSize: "0.95rem", marginBottom: 10 }}>
+                  ✓ Quotation Sent
+                </div>
+                <div className="email-field"><span>To</span> {outbound.to_emails?.length ? outbound.to_emails.join(", ") : "—"}</div>
+                <div className="email-field"><span>Subject</span> {outbound.subject}</div>
+                <div className="email-field"><span>Sent</span> {outbound.sent_at ? new Date(outbound.sent_at).toLocaleString() : "—"}</div>
+                <hr />
+                <pre className="email-body">{outbound.body_text}</pre>
               </div>
-            </form>
+            </>
           ) : (
-            <div className="email-draft-card">
-              <div className="email-field"><span>To</span> {outbound.to_emails?.length ? outbound.to_emails.join(", ") : "— (customer email not on file)"}</div>
-              <div className="email-field"><span>Subject</span> {outbound.subject}</div>
-              <hr />
-              <pre className="email-body">{outbound.body_text}</pre>
-              <div className="email-status">
-                Status: <span className="state-pill state-pending">{outbound.send_status}</span>
-                {" "}— this is a draft only. Sending isn't wired up yet.
+            <>
+              <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginTop: 26, marginBottom: 12 }}>
+                <h2 className="section-heading" style={{ margin: 0 }}>Quotation Ready — Email Draft Prepared</h2>
+                <div style={{ display: "flex", gap: 8 }}>
+                  {!editing && (
+                    <button className="btn btn-edit" onClick={startEditEmail}>✎ Edit Email</button>
+                  )}
+                  <button className="btn btn-approve" onClick={handleMarkSent} disabled={sending}>
+                    {sending ? "Marking…" : "Send Quotation"}
+                  </button>
+                </div>
               </div>
-            </div>
+
+              {editing ? (
+                <form className="email-draft-card" onSubmit={handleSaveEmail}>
+                  <label style={{ display: "block", fontSize: "0.78rem", color: "var(--muted)", marginBottom: 4 }}>Subject</label>
+                  <input
+                    type="text" value={subject} onChange={(e) => setSubject(e.target.value)}
+                    style={{ width: "100%", padding: "8px 10px", border: "1px solid var(--border)", borderRadius: 7, marginBottom: 14, fontFamily: "inherit", fontSize: "0.9rem" }}
+                  />
+                  <label style={{ display: "block", fontSize: "0.78rem", color: "var(--muted)", marginBottom: 4 }}>Body</label>
+                  <textarea
+                    value={bodyText} onChange={(e) => setBodyText(e.target.value)} rows={12}
+                    style={{ width: "100%", padding: "10px", border: "1px solid var(--border)", borderRadius: 7, fontFamily: "inherit", fontSize: "0.9rem", resize: "vertical" }}
+                  />
+                  <div style={{ display: "flex", gap: 8, marginTop: 12 }}>
+                    <button type="submit" className="btn btn-save" disabled={saving}>{saving ? "Saving…" : "Save changes"}</button>
+                    <button type="button" className="btn btn-edit" onClick={() => setEditing(false)}>Cancel</button>
+                  </div>
+                </form>
+              ) : (
+                <div className="email-draft-card">
+                  <div className="email-field"><span>To</span> {outbound.to_emails?.length ? outbound.to_emails.join(", ") : "— (customer email not on file)"}</div>
+                  <div className="email-field"><span>Subject</span> {outbound.subject}</div>
+                  <hr />
+                  <pre className="email-body">{outbound.body_text}</pre>
+                  <p style={{ fontSize: "0.78rem", color: "var(--muted)", marginTop: 10 }}>
+                    Note: actual email sending isn't wired up yet — "Send Quotation" marks this as sent once you've sent it externally (e.g. via Outlook).
+                  </p>
+                </div>
+              )}
+            </>
           )}
         </>
       )}

@@ -1,4 +1,4 @@
-import { useState, useMemo, useEffect } from "react";
+import { useState, useMemo, useEffect, useRef } from "react";
 import { Link } from "react-router-dom";
 import { api } from "../api/client";
 import { usePolling } from "../api/usePolling";
@@ -37,6 +37,10 @@ export default function CasesList() {
   const [page, setPage] = useState(1);
   const [aiRunningId, setAiRunningId] = useState(null);
   const [aiResults, setAiResults] = useState({});
+  const [selectedIds, setSelectedIds] = useState(new Set());
+  const [batchRunning, setBatchRunning] = useState(false);
+  const [batchProgress, setBatchProgress] = useState(null);
+  const tableWrapRef = useRef(null);
   const PAGE_SIZE = 12;
 
   const filtered = useMemo(() => {
@@ -67,6 +71,16 @@ export default function CasesList() {
     setPage(1);
   }, [search, dateFrom, dateTo, statusFilter]);
 
+  useEffect(() => {
+    function handleClickOutside(e) {
+      if (tableWrapRef.current && !tableWrapRef.current.contains(e.target)) {
+        setSelectedIds(new Set());
+      }
+    }
+    document.addEventListener("mousedown", handleClickOutside);
+    return () => document.removeEventListener("mousedown", handleClickOutside);
+  }, []);
+
   const totalPages = Math.max(1, Math.ceil(filtered.length / PAGE_SIZE));
   const paginated = filtered.slice((page - 1) * PAGE_SIZE, page * PAGE_SIZE);
 
@@ -85,6 +99,49 @@ export default function CasesList() {
     } finally {
       setAiRunningId(null);
     }
+  }
+
+  function toggleSelect(caseId) {
+    setSelectedIds((prev) => {
+      const next = new Set(prev);
+      if (next.has(caseId)) next.delete(caseId);
+      else next.add(caseId);
+      return next;
+    });
+  }
+
+  function toggleSelectAllOnPage() {
+    const pageIds = paginated.map((c) => c.case_id);
+    const allSelected = pageIds.every((id) => selectedIds.has(id));
+    setSelectedIds((prev) => {
+      const next = new Set(prev);
+      if (allSelected) {
+        pageIds.forEach((id) => next.delete(id));
+      } else {
+        pageIds.forEach((id) => next.add(id));
+      }
+      return next;
+    });
+  }
+
+  async function handleRunSelected() {
+    const ids = Array.from(selectedIds);
+    setBatchRunning(true);
+    setBatchProgress({ done: 0, total: ids.length });
+    for (let i = 0; i < ids.length; i++) {
+      const caseId = ids[i];
+      setAiRunningId(caseId);
+      try {
+        const result = await api.runAiMatch(caseId);
+        setAiResults((prev) => ({ ...prev, [caseId]: result }));
+      } catch (e) {
+        setAiResults((prev) => ({ ...prev, [caseId]: { status: "error", raw_message: e.message } }));
+      }
+      setBatchProgress({ done: i + 1, total: ids.length });
+    }
+    setAiRunningId(null);
+    setBatchRunning(false);
+    setSelectedIds(new Set());
   }
 
   return (
@@ -117,94 +174,113 @@ export default function CasesList() {
 
       {error && <div className="flash flash-error">{error}</div>}
 
-      {loading && !cases ? (
-        <div className="loading-state">Loading…</div>
-      ) : filtered.length > 0 ? (
-        <>
-          <table className="data-table">
-            <thead>
-              <tr>
-                <th>Ref</th>
-                <th>Status</th>
-                <th>Customer / Project</th>
-                <th>Received</th>
-                <th>Match Confidence</th>
-                <th></th>
-              </tr>
-            </thead>
-            <tbody>
-              {paginated.map((c) => (
-                <tr key={c.case_id}>
-                  <td>
-                    <div className="cell-primary">{c.internal_ref}</div>
-                    {c.revision_count > 1 && (
-                      <div className="cell-secondary">R{c.revision_no} · {c.revision_count} versions</div>
-                    )}
-                  </td>
-                  <td><span className={statusClass(c.status)}>{c.status}</span></td>
-                  <td>
-                    <div className="cell-primary">{c.customer_name || "—"}</div>
-                    <div className="cell-secondary">{c.project_name || ""}</div>
-                  </td>
-                  <td>{c.enq_received_at ? new Date(c.enq_received_at).toLocaleDateString() : "—"}</td>
-                  <td>
-                    {c.match_confidence !== null && c.match_confidence !== undefined ? (
-                      <span className={`confidence-badge ${confidenceClass(c.match_confidence)}`}>
-                        {Math.round(parseFloat(c.match_confidence) * 100)}%
-                      </span>
-                    ) : "—"}
-                  </td>
-                  <td>
-                    <div style={{ display: "flex", flexDirection: "column", gap: 4 }}>
-                      <div>
-                        <Link className="link-btn" to={`/cases/${c.case_id}`}>Open</Link>
-                        {c.status === "QUOTED" && (
-                          <>
-                            {" · "}
-                            <Link className="link-btn" to={`/cases/${c.case_id}/quotation`}>View Quotation</Link>
-                          </>
-                        )}
+      <div ref={tableWrapRef}>
+        {selectedIds.size > 0 && (
+          <div className="batch-action-bar" onMouseDown={(e) => e.stopPropagation()}>
+            <span>{selectedIds.size} case{selectedIds.size > 1 ? "s" : ""} selected</span>
+            <button className="btn btn-approve" onClick={handleRunSelected} disabled={batchRunning}>
+              {batchRunning ? `Running ${batchProgress.done}/${batchProgress.total}…` : `Run Selected (${selectedIds.size})`}
+            </button>
+          </div>
+        )}
+
+        {loading && !cases ? (
+          <div className="loading-state">Loading…</div>
+        ) : filtered.length > 0 ? (
+          <>
+            <table className="data-table">
+              <thead>
+                <tr>
+                  <th style={{ width: 32 }}>
+                    <input
+                      type="checkbox"
+                      checked={paginated.length > 0 && paginated.every((c) => selectedIds.has(c.case_id))}
+                      onChange={toggleSelectAllOnPage}
+                    />
+                  </th>
+                  <th>Ref</th>
+                  <th>Status</th>
+                  <th>Customer / Project</th>
+                  <th>Received</th>
+                  <th>Match Confidence</th>
+                  <th></th>
+                </tr>
+              </thead>
+              <tbody>
+                {paginated.map((c) => (
+                  <tr key={c.case_id}>
+                    <td>
+                      <input
+                        type="checkbox"
+                        checked={selectedIds.has(c.case_id)}
+                        onChange={() => toggleSelect(c.case_id)}
+                      />
+                    </td>
+                    <td>
+                      <div className="cell-primary">{c.internal_ref}</div>
+                      {c.revision_count > 1 && (
+                        <div className="cell-secondary">R{c.revision_no} · {c.revision_count} versions</div>
+                      )}
+                    </td>
+                    <td><span className={statusClass(c.status)}>{c.status}</span></td>
+                    <td>
+                      <div className="cell-primary">{c.customer_name || "—"}</div>
+                      <div className="cell-secondary">{c.project_name || ""}</div>
+                    </td>
+                    <td>{c.enq_received_at ? new Date(c.enq_received_at).toLocaleDateString() : "—"}</td>
+                    <td>
+                      {c.match_confidence !== null && c.match_confidence !== undefined ? (
+                        <span className={`confidence-badge ${confidenceClass(c.match_confidence)}`}>
+                          {Math.round(parseFloat(c.match_confidence) * 100)}%
+                        </span>
+                      ) : "—"}
+                    </td>
+                    <td className="actions-cell">
+                      <div className="actions-row">
+                        <Link className="btn btn-outline btn-small" to={`/cases/${c.case_id}`}>
+                          Open
+                        </Link>
+                        <button
+                          className="btn btn-small"
+                          disabled={aiRunningId === c.case_id || batchRunning}
+                          onClick={() => handleRunAiMatch(c.case_id)}
+                        >
+                          {aiRunningId === c.case_id ? "Running…" : "Run"}
+                        </button>
                       </div>
-                      <button
-                        className="btn btn-small"
-                        disabled={aiRunningId === c.case_id}
-                        onClick={() => handleRunAiMatch(c.case_id)}
-                      >
-                        {aiRunningId === c.case_id ? "Running… (~20s)" : "Run AI Match"}
-                      </button>
                       {aiResults[c.case_id] && (
-                        <div style={{ fontSize: "0.72rem", color: aiResults[c.case_id].status === "error" ? "var(--danger)" : "var(--muted)" }}>
+                        <div className={`ai-result-note ${aiResults[c.case_id].status === "error" ? "ai-result-error" : ""}`}>
                           {aiResults[c.case_id].status === "error"
                             ? aiResults[c.case_id].raw_message
                             : `${aiResults[c.case_id].decision} — ${aiResults[c.case_id].items_matched} matched`}
                         </div>
                       )}
-                    </div>
-                  </td>
-                </tr>
-              ))}
-            </tbody>
-          </table>
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
 
-          {totalPages > 1 && (
-            <div className="pagination">
-              <button disabled={page === 1} onClick={() => setPage(page - 1)}>‹ Prev</button>
-              {getPageNumbers(page, totalPages).map((p, i) =>
-                p === "..." ? (
-                  <span key={"dots-" + i} className="pagination-dots">…</span>
-                ) : (
-                  <button key={p} className={p === page ? "active" : ""} onClick={() => setPage(p)}>{p}</button>
-                )
-              )}
-              <button disabled={page === totalPages} onClick={() => setPage(page + 1)}>Next ›</button>
-            </div>
-          )}
-        </>
-      ) : (
-        <div className="empty-state">
-          <p>{search.trim() || dateFrom || dateTo ? "No cases match your filters." : "No cases yet."}</p>
-        </div>
-      )}
+            {totalPages > 1 && (
+              <div className="pagination">
+                <button disabled={page === 1} onClick={() => setPage(page - 1)}>‹ Prev</button>
+                {getPageNumbers(page, totalPages).map((p, i) =>
+                  p === "..." ? (
+                    <span key={"dots-" + i} className="pagination-dots">…</span>
+                  ) : (
+                    <button key={p} className={p === page ? "active" : ""} onClick={() => setPage(p)}>{p}</button>
+                  )
+                )}
+                <button disabled={page === totalPages} onClick={() => setPage(page + 1)}>Next ›</button>
+              </div>
+            )}
+          </>
+        ) : (
+          <div className="empty-state">
+            <p>{search.trim() || dateFrom || dateTo ? "No cases match your filters." : "No cases yet."}</p>
+          </div>
+        )}
+      </div>
     </div>
   );
 }

@@ -51,6 +51,7 @@ class ProductRecommendation(Base):
     confidence: Mapped[Decimal | None] = mapped_column(Numeric(5, 4), nullable=True)
     rationale: Mapped[str | None] = mapped_column(String(1000), nullable=True)
     is_selected_by_engineer: Mapped[bool | None] = mapped_column(Boolean, nullable=True)
+    decided_by: Mapped[str | None] = mapped_column(String(120), nullable=True)
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow)
 
     line_item: Mapped["ExtractedLineItem"] = relationship(back_populates="recommendations")

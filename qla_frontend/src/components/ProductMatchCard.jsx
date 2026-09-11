@@ -26,8 +26,10 @@ export default function ProductMatchCard({ item, onChanged, onRejected, onQuotat
   const [editing, setEditing] = useState(false);
   const [modelCode, setModelCode] = useState("");
   const [rationale, setRationale] = useState("");
-  const [busy, setBusy] = useState(false);
   const [error, setError] = useState("");
+  const [showExplanation, setShowExplanation] = useState(false);
+  const [showAlternatives, setShowAlternatives] = useState(false);
+  const [busyGlobal, setBusyGlobal] = useState(false);
 
   const topRec = topRecommendation(item);
   const otherRecs = (item.recommendations || [])
@@ -35,7 +37,7 @@ export default function ProductMatchCard({ item, onChanged, onRejected, onQuotat
     .sort((a, b) => a.rank_no - b.rank_no);
 
   async function runAction(fn) {
-    setBusy(true);
+    setBusyGlobal(true);
     setError("");
     try {
       await fn();
@@ -43,7 +45,7 @@ export default function ProductMatchCard({ item, onChanged, onRejected, onQuotat
     } catch (e) {
       setError(e.message || "Something went wrong");
     } finally {
-      setBusy(false);
+      setBusyGlobal(false);
     }
   }
 
@@ -105,7 +107,20 @@ export default function ProductMatchCard({ item, onChanged, onRejected, onQuotat
             {confidencePercent(topRec.confidence) !== null ? `${confidencePercent(topRec.confidence)}%` : "No score"}
           </span>
         </div>
-        <p className="modal-product-rationale">{topRec.rationale || "No rationale given."}</p>
+
+        {topRec.rationale && (
+          <button
+            type="button"
+            className="disclosure-toggle"
+            onClick={() => setShowExplanation(!showExplanation)}
+          >
+            Match explanation {showExplanation ? "▲" : "▼"}
+          </button>
+        )}
+        {showExplanation && topRec.rationale && (
+          <p className="modal-product-rationale">{topRec.rationale}</p>
+        )}
+
         {error && <div className="flash flash-error" style={{ marginTop: 6 }}>{error}</div>}
       </div>
       <div className="modal-product-actions">
@@ -115,11 +130,11 @@ export default function ProductMatchCard({ item, onChanged, onRejected, onQuotat
           <span className="rejected-note">✗ Rejected</span>
         ) : (
           <>
-            <button className="btn btn-approve" disabled={busy} onClick={handleApprove}>Approve</button>
-            <button className="btn btn-reject" disabled={busy} onClick={handleReject}>Reject</button>
+            <button className="btn btn-approve" disabled={busyGlobal} onClick={handleApprove}>Approve</button>
+            <button className="btn btn-reject" disabled={busyGlobal} onClick={handleReject}>Reject</button>
           </>
         )}
-        <button className="btn btn-edit" disabled={busy} onClick={() => (editing ? setEditing(false) : startEdit())}>
+        <button className="btn btn-edit" disabled={busyGlobal} onClick={() => (editing ? setEditing(false) : startEdit())}>
           {editing ? "Cancel" : "Edit"}
         </button>
       </div>
@@ -130,7 +145,7 @@ export default function ProductMatchCard({ item, onChanged, onRejected, onQuotat
           <input value={modelCode} onChange={(e) => setModelCode(e.target.value)} />
           <label>Rationale / notes</label>
           <textarea rows={2} value={rationale} onChange={(e) => setRationale(e.target.value)} />
-          <button type="submit" className="btn btn-save" disabled={busy}>Save changes</button>
+          <button type="submit" className="btn btn-save" disabled={busyGlobal}>Save changes</button>
         </form>
       )}
 
@@ -140,15 +155,21 @@ export default function ProductMatchCard({ item, onChanged, onRejected, onQuotat
 
       {otherRecs.length > 0 && (
         <div className="modal-alt-matches">
-          <p className="alt-matches-label">{otherRecs.length} other suggested match{otherRecs.length > 1 ? "es" : ""}:</p>
-          {otherRecs.map((rec) => (
+          <button
+            type="button"
+            className="disclosure-toggle"
+            onClick={() => setShowAlternatives(!showAlternatives)}
+          >
+            {otherRecs.length} other suggested match{otherRecs.length > 1 ? "es" : ""} {showAlternatives ? "▲" : "▼"}
+          </button>
+          {showAlternatives && otherRecs.map((rec) => (
             <div className="modal-alt-row" key={rec.recommendation_id}>
               <code>{rec.model_code || rec.family_code || "—"}</code>
               <span className={`confidence-badge ${confidenceClass(rec.confidence)}`}>
                 {confidencePercent(rec.confidence) !== null ? `${confidencePercent(rec.confidence)}%` : "—"}
               </span>
               <span className="modal-alt-rationale">{rec.rationale || "—"}</span>
-              <button className="btn btn-small" disabled={busy} onClick={() => handleUseInstead(rec.recommendation_id)}>
+              <button className="btn btn-small" disabled={busyGlobal} onClick={() => handleUseInstead(rec.recommendation_id)}>
                 Use this instead
               </button>
             </div>
