@@ -27,7 +27,7 @@ export default function ProductMatchCard({ item, onChanged, onRejected, onQuotat
   const [modelCode, setModelCode] = useState("");
   const [rationale, setRationale] = useState("");
   const [error, setError] = useState("");
-  const [showExplanation, setShowExplanation] = useState(false);
+
   const [showAlternatives, setShowAlternatives] = useState(false);
   const [busyGlobal, setBusyGlobal] = useState(false);
 
@@ -107,19 +107,6 @@ export default function ProductMatchCard({ item, onChanged, onRejected, onQuotat
             {confidencePercent(topRec.confidence) !== null ? `${confidencePercent(topRec.confidence)}%` : "No score"}
           </span>
         </div>
-
-        {topRec.rationale && (
-          <button
-            type="button"
-            className="disclosure-toggle"
-            onClick={() => setShowExplanation(!showExplanation)}
-          >
-            Match explanation {showExplanation ? "▲" : "▼"}
-          </button>
-        )}
-        {showExplanation && topRec.rationale && (
-          <p className="modal-product-rationale">{topRec.rationale}</p>
-        )}
 
         {error && <div className="flash flash-error" style={{ marginTop: 6 }}>{error}</div>}
       </div>
