@@ -15,6 +15,8 @@ export default function GenerateQuotationModal({ caseId, lines: initialLines, on
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState("");
 
+  const hasAllPrices = lines.length > 0 && lines.every((l) => l._unitPrice && parseFloat(l._unitPrice) > 0);
+
   function updateLineField(lineItemId, field, value) {
     setLines(lines.map((l) => (l.line_item_id === lineItemId ? { ...l, [field]: value } : l)));
   }
@@ -100,7 +102,11 @@ export default function GenerateQuotationModal({ caseId, lines: initialLines, on
             </table>
           </div>
 
-          <p className="qgm-section-label">Commercial terms</p>
+            {!hasAllPrices && (
+            <p style={{ fontSize: "0.8rem", color: "var(--warn)", marginBottom: 10 }}>
+              ⚠ Enter a unit price (greater than 0) for every line item to enable generation.
+            </p>
+          )}
           <div className="qgm-terms-grid">
             <div>
               <label>Discount %</label>
@@ -127,7 +133,12 @@ export default function GenerateQuotationModal({ caseId, lines: initialLines, on
 
         <div className="qgm-footer">
           <button className="btn btn-outline" onClick={onClose} disabled={saving}>Cancel</button>
-          <button className="btn qgm-primary" onClick={handleApproveAndGenerate} disabled={saving}>
+          <button
+            className="btn qgm-primary"
+            onClick={handleApproveAndGenerate}
+            disabled={saving || !hasAllPrices}
+            title={!hasAllPrices ? "Enter a unit price for every line item first" : undefined}
+          >
             {saving ? "Generating…" : "✓ Approve and generate"}
           </button>
         </div>
