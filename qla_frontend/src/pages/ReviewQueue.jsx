@@ -234,6 +234,7 @@ export default function ReviewQueue() {
                 <th>Case Ref</th>
                 <th>Customer </th>
                 <th>Category</th>
+                
                 <th>Received</th>
                 <th>Top Match Confidence</th>
                 <th>Status</th>
@@ -246,7 +247,12 @@ export default function ReviewQueue() {
                   <td>
                     <input type="checkbox" checked={selectedIds.has(c.case_id)} onChange={() => toggleSelect(c.case_id)} />
                   </td>
-                  <td>{c.internal_ref}</td>
+                  <td>
+                    <div className="cell-primary">{c.internal_ref}</div>
+                    {c.revision_count > 1 && (
+                      <div className="cell-secondary">R{c.revision_no} · {c.revision_count} versions</div>
+                    )}
+                  </td>
                   <td>
                     <div className="cell-primary">{c.customer_name || "—"}</div>
  

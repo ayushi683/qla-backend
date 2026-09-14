@@ -5,3 +5,4 @@ __pycache__/
 instance/*.db
 instance/quotations/*.docx
 instance/enquiry_docs/*/
+test_enquiries/

@@ -476,7 +476,9 @@ def insights(db: Session = Depends(get_db), current_user=Depends(get_current_use
 def review_queue_cases(db: Session = Depends(get_db), current_user=Depends(get_current_user)):
     """Grouped-by-case view for the new table UI — one row per case,
     not per line item. A case appears here if ANY of its line items
-    still needs a decision (pending or rejected)."""
+    still needs a decision (pending or rejected). Multiple quotation
+    revisions of the same qtnno+fyear are collapsed into a single row
+    (the revision that most needs review, or the latest one)."""
     query = (
         db.query(InquiryCase)
         .join(ExtractedLineItem, ExtractedLineItem.case_id == InquiryCase.case_id)
@@ -493,8 +495,34 @@ def review_queue_cases(db: Session = Depends(get_db), current_user=Depends(get_c
         query = query.filter(InquiryCase.category.in_(my_categories))
     cases = query.all()
 
-    results = []
+    # Group cases needing review by (qtnno, fyear). Within a group,
+    # pick the latest revision that needs review as the representative
+    # row — that's the one whose case_id "View Details" will open.
+    groups: dict[tuple, list] = {}
+    standalone = []
     for case in cases:
+        if case.qtnno and case.fyear:
+            key = (case.qtnno, case.fyear)
+            groups.setdefault(key, []).append(case)
+        else:
+            standalone.append(case)
+
+    representative_cases = []
+    revision_counts = {}
+    for key, members in groups.items():
+        members.sort(key=lambda m: m.revision_no or 0)
+        rep = members[-1]
+        representative_cases.append(rep)
+        # Total revision count for this qtnno+fyear (including ones
+        # that don't need review), so the badge reflects the real family size.
+        total_siblings = db.query(InquiryCase).filter_by(qtnno=key[0], fyear=key[1]).count()
+        revision_counts[rep.case_id] = total_siblings
+    for case in standalone:
+        representative_cases.append(case)
+        revision_counts[case.case_id] = 1
+
+    results = []
+    for case in representative_cases:
         items = db.query(ExtractedLineItem).filter_by(case_id=case.case_id).all()
         confidences = []
         has_pending = False
@@ -520,6 +548,8 @@ def review_queue_cases(db: Session = Depends(get_db), current_user=Depends(get_c
             category=case.category,
             status=case.status,
             enq_received_at=case.enq_received_at,
+            revision_no=case.revision_no or 0,
+            revision_count=revision_counts.get(case.case_id, 1),
         ))
 
     results.sort(key=lambda r: (not r.has_pending, r.has_rejected))

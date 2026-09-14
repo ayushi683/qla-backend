@@ -178,6 +178,8 @@ class CaseSummaryOut(BaseModel):
     category: Optional[str] = None
     status: str = "RECEIVED"
     enq_received_at: Optional[datetime] = None
+    revision_no: int = 0
+    revision_count: int = 1
 
 class EnquiryEmailOut(BaseModel):
     model_config = _CONFIG
