@@ -85,7 +85,7 @@ export default function ReviewCard({ item, showCase = false, onChanged }) {
     if (topRec.is_selected_by_engineer === true) {
       stateLabel = <span className="state-pill state-approved">Approved</span>;
     } else if (topRec.is_selected_by_engineer === false) {
-      stateLabel = <span className="state-pill state-rejected">Rejected - needs a decision</span>;
+      stateLabel = <span className="state-pill state-rejected">Rejected: needs a decision</span>;
     } else {
       stateLabel = <span className="state-pill state-pending">Pending review</span>;
     }

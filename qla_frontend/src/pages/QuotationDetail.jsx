@@ -107,7 +107,7 @@ export default function QuotationDetail() {
       <Link className="back-link" to={`/cases/${caseId}`}>&larr; {caseInfo.internal_ref}</Link>
 
       <div className="case-header">
-        <h1 className="page-title">Quotation: {caseInfo.internal_ref} R{quotation.revision_no}</h1>
+        <h1 className="page-title">Quotation - {caseInfo.internal_ref} R{quotation.revision_no}</h1>
         <span className={statusClass(quotation.status)}>{quotation.status}</span>
       </div>
       <p className="case-meta">{caseInfo.project_name || "No project name"}</p>
@@ -257,7 +257,7 @@ export default function QuotationDetail() {
                   <hr />
                   <pre className="email-body">{outbound.body_text}</pre>
                   <p style={{ fontSize: "0.78rem", color: "var(--muted)", marginTop: 10 }}>
-                    Note: actual email sending isn't wired up yet: "Send Quotation" marks this as sent once you've sent it externally (e.g. via Outlook).
+                    Note: actual email sending isn't wired up yet - "Send Quotation" marks this as sent once you've sent it externally (e.g. via Outlook).
                   </p>
                 </div>
               )}

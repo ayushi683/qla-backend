@@ -27,6 +27,8 @@ export default function ReviewQueue() {
   const [openCaseId, setOpenCaseId] = useState(null);
   const [toast, setToast] = useState(null);
   const [sortBy, setSortBy] = useState("newest");
+  const [selectedIds, setSelectedIds] = useState(new Set());
+  const [bulkRunning, setBulkRunning] = useState(false);
   const dropdownRef = useRef(null);
   const tableWrapRef = useRef(null);
 
@@ -40,33 +42,15 @@ export default function ReviewQueue() {
     return () => document.removeEventListener("mousedown", handleClickOutside);
   }, []);
 
-  function toggleSelect(caseId) {
-    setSelectedIds((prev) => {
-      const next = new Set(prev);
-      if (next.has(caseId)) next.delete(caseId); else next.add(caseId);
-      return next;
-    });
-  }
-
-  function toggleSelectAll() {
-    const allSelected = filtered.length > 0 && filtered.every((c) => selectedIds.has(c.case_id));
-    setSelectedIds(allSelected ? new Set() : new Set(filtered.map((c) => c.case_id)));
-  }
-
-  async function handleRunSelectedAiMatch() {
-    setBulkRunning(true);
-    try {
-      const result = await api.bulkAiMatch(Array.from(selectedIds));
-      const doneCount = result.results.filter((r) => r.status === "done").length;
-      showToast(`AI match run on ${doneCount}/${result.results.length} cases`);
-      refresh();
-    } catch (e) {
-      showToast("Bulk AI match failed: " + e.message);
-    } finally {
-      setBulkRunning(false);
-      setSelectedIds(new Set());
+  useEffect(() => {
+    function handleClickOutsideTable(e) {
+      if (tableWrapRef.current && !tableWrapRef.current.contains(e.target)) {
+        setSelectedIds(new Set());
+      }
     }
-  }
+    document.addEventListener("mousedown", handleClickOutsideTable);
+    return () => document.removeEventListener("mousedown", handleClickOutsideTable);
+  }, []);
 
   const filtered = useMemo(() => {
     if (!cases) return [];
@@ -225,7 +209,14 @@ export default function ReviewQueue() {
       {error && <div className="flash flash-error">{error}</div>}
 
       <div ref={tableWrapRef}>
-
+        {selectedIds.size > 0 && (
+          <div className="batch-action-bar" onMouseDown={(e) => e.stopPropagation()}>
+            <span>{selectedIds.size} case{selectedIds.size > 1 ? "s" : ""} selected</span>
+            <button className="btn btn-approve" onClick={handleRunSelectedAiMatch} disabled={bulkRunning}>
+              {bulkRunning ? "Running…" : `Run AI Match on Selected (${selectedIds.size})`}
+            </button>
+          </div>
+        )}
 
         {loading && !cases ? (
           <div className="loading-state">Loading…</div>
@@ -233,6 +224,13 @@ export default function ReviewQueue() {
           <table className="data-table case-summary-table">
             <thead>
               <tr>
+                <th style={{ width: 32 }}>
+                  <input
+                    type="checkbox"
+                    checked={filtered.length > 0 && filtered.every((c) => selectedIds.has(c.case_id))}
+                    onChange={toggleSelectAll}
+                  />
+                </th>
                 <th>Case Ref</th>
                 <th>Customer </th>
                 <th>Category</th>
@@ -247,6 +245,9 @@ export default function ReviewQueue() {
               {filtered.map((c) => (
                 <tr key={c.case_id} className={c.has_rejected && !c.has_pending ? "row-rejected" : ""}>
                   <td>
+                    <input type="checkbox" checked={selectedIds.has(c.case_id)} onChange={() => toggleSelect(c.case_id)} />
+                  </td>
+                  <td>
                     <div className="cell-primary">{c.internal_ref}</div>
                     {c.revision_count > 1 && (
                       <div className="cell-secondary">R{c.revision_no} · {c.revision_count} versions</div>
@@ -254,6 +255,7 @@ export default function ReviewQueue() {
                   </td>
                   <td>
                     <div className="cell-primary">{c.customer_name || "—"}</div>
+ 
                   </td>
                   <td>{c.category || "—"}</td>
                   <td>{c.enq_received_at ? new Date(c.enq_received_at).toLocaleDateString() : "—"}</td>
