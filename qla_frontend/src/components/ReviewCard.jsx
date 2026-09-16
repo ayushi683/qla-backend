@@ -85,7 +85,7 @@ export default function ReviewCard({ item, showCase = false, onChanged }) {
     if (topRec.is_selected_by_engineer === true) {
       stateLabel = <span className="state-pill state-approved">Approved</span>;
     } else if (topRec.is_selected_by_engineer === false) {
-      stateLabel = <span className="state-pill state-rejected">Rejected — needs a decision</span>;
+      stateLabel = <span className="state-pill state-rejected">Rejected - needs a decision</span>;
     } else {
       stateLabel = <span className="state-pill state-pending">Pending review</span>;
     }
@@ -129,7 +129,7 @@ export default function ReviewCard({ item, showCase = false, onChanged }) {
             </div>
             <p className="match-rationale">{topRec.rationale || "No rationale given."}</p>
             <p className="confidence-help">
-              Match Quality shows how well the AI thinks this product fits — a higher number means a better match. Check this along with the description before deciding.
+              Match Quality shows how well the AI thinks this product fits, a higher number means a better match. Check this along with the description before deciding.
             </p>
           </div>
 

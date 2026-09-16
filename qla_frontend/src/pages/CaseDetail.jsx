@@ -93,7 +93,7 @@ export default function CaseDetail() {
   function loadQuotation() {
     api.quotationDetail(caseId)
       .then((d) => { setQuotation(d); setQuotationError(""); })
-      .catch((e) => setQuotationError(e.message || "No quotation generated yet — approve every line item first."));
+      .catch((e) => setQuotationError(e.message || "No quotation generated yet, approve every line item first."));
   }
 
   useEffect(() => {
@@ -277,7 +277,7 @@ export default function CaseDetail() {
                   <span><strong>Subject:</strong> {enquiryEmail.subject || "—"}</span>
                 </div>
                 <pre className="enquiry-email-body">{enquiryEmail.body_text || "(no body text)"}</pre>
-                <p className="enquiry-email-note">No documents were attached — showing the enquiry email itself.</p>
+                <p className="enquiry-email-note">No documents were attached, showing the enquiry email itself.</p>
               </div>
             ) : (
               <p className="no-recs">No documents or enquiry email on file for this case.</p>
@@ -321,7 +321,7 @@ export default function CaseDetail() {
                   <div className="quote-doc-head">
                     <div>
                       <div className="quote-doc-label">Status</div>
-                      <div className="quote-doc-filename">Draft — not generated yet</div>
+                      <div className="quote-doc-filename">Draft not generated yet</div>
                     </div>
                     <button className="btn btn-approve" onClick={() => setShowGenerateModal(true)}>
                       Generate Quotation
@@ -394,7 +394,7 @@ export default function CaseDetail() {
                     ) : (
                       <>
                         <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginTop: 20, marginBottom: 12 }}>
-                          <h3 className="modal-section-heading" style={{ margin: 0 }}>Quotation Ready — Email Draft Prepared</h3>
+                          <h3 className="modal-section-heading" style={{ margin: 0 }}>Quotation Ready: Email Draft Prepared</h3>
                           <div style={{ display: "flex", gap: 8 }}>
                             {!editingEmail && <button className="btn btn-edit" onClick={startEditEmail}>✎ Edit Email</button>}
                             <button className="btn btn-approve" onClick={handleMarkSent} disabled={sending}>

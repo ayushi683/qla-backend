@@ -107,7 +107,7 @@ export default function CaseReviewModal({ caseId, onClose, onChanged, onRejected
                   <span><strong>Subject:</strong> {enquiryEmail.subject || "—"}</span>
                 </div>
                 <pre className="enquiry-email-body">{enquiryEmail.body_text || "(no body text)"}</pre>
-                <p className="enquiry-email-note">No documents were attached — showing the enquiry email itself.</p>
+                <p className="enquiry-email-note">No documents were attached, showing the enquiry email itself.</p>
               </div>
             ) : (
               <p className="no-recs" style={{ marginBottom: 20 }}>No documents or enquiry email on file for this case.</p>
