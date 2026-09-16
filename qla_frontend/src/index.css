@@ -2440,3 +2440,24 @@ a { color: inherit; }
   max-width: 380px;
   margin: 0;
 }
+
+.stat-card-stacked {
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 8px;
+}
+.stat-text-row {
+  display: flex;
+  align-items: baseline;
+  gap: 8px;
+}
+.stat-card-stacked .stat-text-row .stat-value { 
+  font-size: 1.1rem !important; 
+  font-weight: 700;
+  margin: 0;
+}
+.stat-card-stacked .stat-text-row .stat-label { 
+  font-size: 1.1rem !important; 
+  font-weight: 500;
+  color: var(--ink-soft);
+}
