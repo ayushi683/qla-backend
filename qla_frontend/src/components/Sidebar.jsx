@@ -14,7 +14,7 @@ import {
 } from "lucide-react";
 
 const NAV_ITEMS = [
-  { to: "/dashboard", label: "Dashboard", Icon: LayoutDashboard, adminOnly: true },
+  { to: "/dashboard", label: "Dashboard", Icon: LayoutDashboard },
   { to: "/", end: true, label: "Review Queue", Icon: ClipboardList },
   { to: "/cases", label: "All Cases", Icon: FolderOpen },
   { to: "/users", label: "Users", Icon: Users, adminOnly: true },

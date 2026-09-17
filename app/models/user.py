@@ -30,10 +30,10 @@ class AppUser(Base):
 
     __tablename__ = "app_user"
     __table_args__ = (
-        CheckConstraint(
-            "(role = 'ADMIN') OR (password_hash IS NULL AND allow_password_login = 0)",
-            name="ck_app_user_password_admin_only",
-        ),
+        # Temporarily allowing password login for all roles
+        # suggestion, until Outlook/Azure credentials are available.
+        # Once Outlook login is implemented, this can be tightened back
+        # to admin-only password login if needed.
     )
 
     user_id: Mapped[int] = mapped_column(BigInteger, primary_key=True, autoincrement=True)

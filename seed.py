@@ -198,7 +198,7 @@ if not db.query(InquiryCase).filter_by(internal_ref="DEMO-0003").first():
 
 
 # --- Helper so adding new demo cases is short, not a big copy-paste block ---
-def add_demo_case(ref, customer_name, customer_email, project_name, enq_no, confidence, items):
+def add_demo_case(ref, customer_name, customer_email, project_name, enq_no, confidence, items, category=None):
     if db.query(InquiryCase).filter_by(internal_ref=ref).first():
         return
     customer = Party(party_type="CUSTOMER", display_name=customer_name, email=customer_email)
@@ -209,6 +209,7 @@ def add_demo_case(ref, customer_name, customer_email, project_name, enq_no, conf
         internal_ref=ref, status="RECEIVED", project_name=project_name,
         enq_no_customer=enq_no, enq_received_at=datetime.now(timezone.utc),
         match_confidence=Decimal(str(confidence)), customer_party_id=customer.party_id,
+        category=category,
     )
     db.add(case)
     db.flush()
@@ -231,8 +232,29 @@ def add_demo_case(ref, customer_name, customer_email, project_name, enq_no, conf
     print(f"Created demo case {ref} with {len(items)} line items, all pending review.")
 
 
+add_demo_case(
+    "DEMO-0005", "Global Exports Pte Ltd", "purchase@globalexports.com",
+    "Offshore Platform Instrumentation", "GE/ENQ/2026/22", 0.86,
+    items=[{"tag": "LT-30", "desc": "Radar level transmitter, export compliance required",
+            "type": "Level Transmitter", "qty": 2,
+            "matches": [{"model": "TRD-INTROL91-1021W", "conf": 0.86, "why": "Radar transmitter matches export project spec."}]}],
+    category="EPC,EXPORT",
+)
+
+add_demo_case(
+    "DEMO-0006", "Coastal Water Treatment Ltd", "procurement@coastalwater.com",
+    "Ultrasonic Level Monitoring Upgrade", "CWT/ENQ/2026/09", 0.91,
+    items=[{"tag": "LT-40", "desc": "Ultrasonic level transmitter, tank farm application",
+            "type": "Level Transmitter", "qty": 3,
+            "matches": [{"model": "TUS-ULTRATROL-21", "conf": 0.91, "why": "Ultrasonic transmitter matches tank monitoring spec."}]}],
+    category="ULTRASONIC",
+)
+
+
+
 # --- Pulls the NEXT enquiry (in order, not random) from demo_queries.json
 # each time seed.py runs. Order is based on how many DEMO-xxxx cases
+
 # already exist, so re-running always adds the next one in the file. ---
 with open("demo_queries.json") as f:
     QUERY_POOL = json.load(f)

@@ -605,12 +605,17 @@ a { color: inherit; }
 .data-table { width: 100%; border-collapse: collapse; margin-top: 16px; background: var(--card); border-radius: var(--radius); overflow: hidden; border: 1px solid var(--border); }
 .data-table th, .data-table td { text-align: left; padding: 12px 16px; font-size: 0.89rem; border-bottom: 1px solid var(--border); }
 
-.data-table th:nth-child(2),
-.data-table td:nth-child(2),
-.data-table th:nth-child(6),
-.data-table td:nth-child(6) {
+.data-table th:nth-child(1),
+.data-table td:nth-child(1),
+.data-table th:nth-child(5),
+.data-table td:nth-child(5) {
   white-space: nowrap !important;
   min-width: 100px;
+}
+
+.data-table td:nth-child(2) {
+  white-space: normal;
+  max-width: 320px;
 }
 
 .data-table th { color: var(--muted); font-weight: 600; font-size: 0.72rem; text-transform: uppercase; letter-spacing: 0.05em; background: #fafbfa; }

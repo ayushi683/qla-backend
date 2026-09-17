@@ -443,10 +443,16 @@ def insights(db: Session = Depends(get_db), current_user=Depends(get_current_use
     }
 
     decided_recs = db.query(ProductRecommendation).filter(ProductRecommendation.is_selected_by_engineer.isnot(None)).all()
-    total_decided = len(decided_recs)
-    total_rejected = sum(1 for r in decided_recs if r.is_selected_by_engineer is False)
-    result["rejection_rate"] = round((total_rejected / total_decided * 100), 1) if total_decided > 0 else 0
 
+    if current_user.role == "ADMIN":
+        my_decided_recs = decided_recs
+    else:
+        my_decided_recs = [r for r in decided_recs if r.decided_by == current_user.display_name]
+
+    my_total_decided = len(my_decided_recs)
+    my_total_rejected = sum(1 for r in my_decided_recs if r.is_selected_by_engineer is False)
+    result["rejection_rate"] = round((my_total_rejected / my_total_decided * 100), 1) if my_total_decided > 0 else 0
+    
     if current_user.role == "ADMIN":
         category_rows = (
             db.query(InquiryCase.category, func.count(InquiryCase.case_id))
@@ -469,6 +475,10 @@ def insights(db: Session = Depends(get_db), current_user=Depends(get_current_use
             for name, stats in engineer_stats.items()
         ]
 
+    result["pipeline_breakdown"] = [
+    {"category": "Incoming (Pending)", "count": under_review_count},
+    {"category": "Quoted (Sent)", "count": total_quotations_sent},
+    ]
     return result
 
 
@@ -488,6 +498,7 @@ def review_queue_cases(db: Session = Depends(get_db), current_user=Depends(get_c
                 ProductRecommendation.is_selected_by_engineer == True
             )
         )
+        .filter(InquiryCase.status != "QUOTED")
         .distinct()
     )
     if current_user.role != "ADMIN" and current_user.category:

@@ -32,8 +32,9 @@ def login(payload: LoginRequest, db: Session = Depends(get_db)):
 
     if user is None:
         fail("UNKNOWN_USER", "Invalid email or password.")
-    if not user.allow_password_login or user.role != "ADMIN":
-        # Same rule as the DB check constraint: only ADMIN may use a password.
+    if not user.allow_password_login:
+        # Temporarily allowing password login for all roles (Ninad's
+        # suggestion) until Outlook/Azure credentials are ready.
         fail("METHOD_NOT_ALLOWED", "This account must sign in via Outlook.")
     if not user.is_enabled:
         fail("DISABLED", "This account has been disabled.")

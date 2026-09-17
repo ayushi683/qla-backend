@@ -1,6 +1,7 @@
 import { useState, useEffect, useCallback } from "react";
 import { Link } from "react-router-dom";
 import { api } from "../api/client";
+import { useAuth } from "../context/AuthContext";
 import {
   Inbox,
   Send,
@@ -33,8 +34,11 @@ const CATEGORY_COLORS = [
   "#22c55e", // Fresh leaf green
   "#14b8a6", // Teal green
   "#84cc16", // Lime green
-  "#64748b", // Neutral slate
+  "#4d7c0f", // Olive green
 ];
+
+// Two-tone palette for the personal pipeline donut (Pending vs Quoted)
+const PIPELINE_COLORS = ["#84cc16", "#16694a"];
 
 function formatTimeAgo(iso) {
   if (!iso) return "Recent";
@@ -47,7 +51,7 @@ function formatTimeAgo(iso) {
   return days === 1 ? "Yesterday" : `${days}d ago`;
 }
 
-function DonutChart({ data, hoveredCategory, onHoverCategory }) {
+function DonutChart({ data, hoveredCategory, onHoverCategory, colors }) {
   const [animate, setAnimate] = useState(false);
   useEffect(() => {
     const t = requestAnimationFrame(() => setAnimate(true));
@@ -78,7 +82,8 @@ function DonutChart({ data, hoveredCategory, onHoverCategory }) {
             const rotation = (offsetSoFar / total) * 360 - 90;
             offsetSoFar += d.count;
             const isHovered = hoveredCategory === d.category;
-            const color = CATEGORY_COLORS[i % CATEGORY_COLORS.length];
+            const palette = colors || CATEGORY_COLORS;
+            const color = palette[i % palette.length];
 
             return (
               <circle
@@ -112,7 +117,8 @@ function DonutChart({ data, hoveredCategory, onHoverCategory }) {
       <div className="donut-legend-list">
         {data.map((d, i) => {
           const isHovered = hoveredCategory === d.category;
-          const color = CATEGORY_COLORS[i % CATEGORY_COLORS.length];
+          const palette = colors || CATEGORY_COLORS;
+          const color = palette[i % palette.length];
           const pct = ((d.count / total) * 100).toFixed(1);
 
           return (
@@ -140,6 +146,7 @@ function DonutChart({ data, hoveredCategory, onHoverCategory }) {
 }
 
 export default function Dashboard() {
+  const { user } = useAuth();
   const [insights, setInsights] = useState(null);
   const [recentCases, setRecentCases] = useState([]);
   const [loading, setLoading] = useState(true);
@@ -147,6 +154,7 @@ export default function Dashboard() {
   const [error, setError] = useState("");
   const [showRejectionDetail, setShowRejectionDetail] = useState(false);
   const [hoveredCategory, setHoveredCategory] = useState(null);
+  const [barsAnimate, setBarsAnimate] = useState(false);
 
   const loadData = useCallback(async (isManualRefresh = false) => {
     if (isManualRefresh) setRefreshing(true);
@@ -182,6 +190,17 @@ export default function Dashboard() {
     loadData();
   }, [loadData]);
 
+  const engineers = (insights?.engineer_performance || []).sort(
+    (a, b) => (b.approved + b.rejected) - (a.approved + a.rejected)
+  );
+
+  useEffect(() => {
+    if (!loading && engineers.length > 0) {
+      const t = requestAnimationFrame(() => setBarsAnimate(true));
+      return () => cancelAnimationFrame(t);
+    }
+  }, [loading, engineers.length]);
+
   if (loading) {
     return (
       <div className="page">
@@ -214,13 +233,9 @@ export default function Dashboard() {
   const underReview = insights?.under_review || 0;
   const rejectionRate = insights?.rejection_rate || 0;
 
-  // Pipeline conversion rate
   const quotationRate = incomingTotal > 0 ? Math.round((quotationsTotal / incomingTotal) * 100) : 0;
 
   const categories = insights?.by_category || [];
-  const engineers = (insights?.engineer_performance || []).sort(
-    (a, b) => (b.approved + b.rejected) - (a.approved + a.rejected)
-  );
   const maxDecisions = Math.max(...engineers.map((e) => e.approved + e.rejected), 1);
 
   return (
@@ -229,14 +244,18 @@ export default function Dashboard() {
       <div className="dashboard-header">
         <div className="dashboard-header-left">
           <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
-            <h1 className="page-title" style={{ margin: 0 }}>Executive Dashboard</h1>
+            <h1 className="page-title" style={{ margin: 0 }}>
+              {user?.role === "ADMIN" ? "Executive Dashboard" : "My Dashboard"}
+            </h1>
             <span className="dashboard-status-pill">
               <span className="dashboard-status-dot" />
               Live System
             </span>
           </div>
           <p className="page-sub">
-            Real-time analytics, review queue status, and quotation tracking for Pune Techtrol.
+            {user?.role === "ADMIN"
+              ? "Real-time analytics, review queue status, and quotation tracking for Pune Techtrol."
+              : `Here's what's on your plate and how you're doing — ${user?.category || "your category"}.`}
           </p>
         </div>
 
@@ -261,7 +280,6 @@ export default function Dashboard() {
 
       {/* 2. Top Metric KPI Cards */}
       <div className="stat-cards">
-        {/* Card 1: Incoming Enquiries */}
         <div className="stat-card">
           <div className="stat-card-top">
             <span className="stat-label">Incoming Enquiries</span>
@@ -289,7 +307,6 @@ export default function Dashboard() {
           </div>
         </div>
 
-        {/* Card 2: Quotations Sent */}
         <div className="stat-card">
           <div className="stat-card-top">
             <span className="stat-label">Quotations Generated</span>
@@ -317,16 +334,15 @@ export default function Dashboard() {
           </div>
         </div>
 
-        {/* Card 3: Items Under Review */}
         <div className="stat-card">
           <div className="stat-card-top">
             <span className="stat-label">Pending Decision</span>
-            <div className="stat-icon-wrap" style={{ background: "var(--warn-tint)", color: "var(--warn)" }}>
+            <div className="stat-icon-wrap" style={{ background: "#d1fae5", color: "#059669" }}>
               <Clock size={18} />
             </div>
           </div>
           <div>
-            <div className="stat-value" style={{ color: underReview > 0 ? "var(--warn)" : "var(--ink)" }}>
+            <div className="stat-value" style={{ color: underReview > 0 ? "#4d7c0f" : "var(--ink)" }}>
               {underReview}
             </div>
             <div className="stat-sub">
@@ -336,7 +352,7 @@ export default function Dashboard() {
               <div
                 className="stat-progress-bar"
                 style={{
-                  background: "var(--warn)",
+                  background: "#059669",
                   width: underReview > 0 ? "65%" : "0%",
                 }}
               />
@@ -344,7 +360,6 @@ export default function Dashboard() {
           </div>
         </div>
 
-        {/* Card 4: AI Rejection Rate (Interactive) */}
         <div
           className="stat-card stat-card-clickable"
           onClick={() => setShowRejectionDetail((v) => !v)}
@@ -381,7 +396,6 @@ export default function Dashboard() {
             </div>
           </div>
 
-          {/* Rejection Popover Details */}
           {showRejectionDetail && (
             <div className="rejection-popover" onClick={(e) => e.stopPropagation()}>
               <div className="rejection-popover-head">
@@ -421,96 +435,154 @@ export default function Dashboard() {
         </div>
       </div>
 
-      {/* 3. Middle Grid: Category Breakdown + Engineer Performance */}
-      <div className="dashboard-grid" style={{ marginBottom: 24 }}>
-        {/* Category Breakdown Card */}
-        <div className="dashboard-card">
-          <div className="dashboard-card-head">
-            <h2 className="dashboard-card-title">
-              <PieChart size={18} style={{ color: "var(--brand)" }} />
-              Enquiries by Category
-            </h2>
-            <Link to="/cases" className="dashboard-card-action">
-              All Cases <ArrowRight size={14} />
-            </Link>
+      {/* 3b. Engineer-only: My Pipeline Overview + My Recent Activity */}
+      {user?.role !== "ADMIN" && (
+        <div className="dashboard-grid" style={{ marginBottom: 24 }}>
+          <div className="dashboard-card">
+            <div className="dashboard-card-head">
+              <h2 className="dashboard-card-title">
+                <PieChart size={18} style={{ color: "var(--brand)" }} />
+                My Pipeline — {user?.category || "My Category"}
+              </h2>
+            </div>
+            {(insights?.pipeline_breakdown || []).every((d) => d.count === 0) ? (
+              <div style={{ padding: "30px 0", textAlign: "center", color: "var(--muted)", fontSize: "0.88rem" }}>
+                No enquiries yet.
+              </div>
+            ) : (
+              <DonutChart
+                data={insights?.pipeline_breakdown || []}
+                hoveredCategory={hoveredCategory}
+                onHoverCategory={setHoveredCategory}
+                colors={PIPELINE_COLORS}
+              />
+            )}
           </div>
 
-          {categories.length === 0 ? (
-            <div style={{ padding: "30px 0", textAlign: "center", color: "var(--muted)", fontSize: "0.88rem" }}>
-              No categories assigned yet.
+          <div className="dashboard-card">
+            <div className="dashboard-card-head">
+              <h2 className="dashboard-card-title">
+                <Activity size={18} style={{ color: "var(--brand)" }} />
+                My Recent Activity
+              </h2>
+              <Link to="/cases" className="dashboard-card-action">
+                View all <ArrowRight size={14} />
+              </Link>
             </div>
-          ) : (
-            <DonutChart
-              data={categories}
-              hoveredCategory={hoveredCategory}
-              onHoverCategory={setHoveredCategory}
-            />
-          )}
-        </div>
-
-        {/* Engineer Review Performance */}
-        <div className="dashboard-card">
-          <div className="dashboard-card-head">
-            <h2 className="dashboard-card-title">
-              <BarChart3 size={18} style={{ color: "var(--brand)" }} />
-              Engineer Activity & Approvals
-            </h2>
-            <span className="stat-badge">{engineers.length} Active Engineers</span>
-          </div>
-
-          {engineers.length === 0 ? (
-            <div style={{ padding: "30px 0", textAlign: "center", color: "var(--muted)", fontSize: "0.88rem" }}>
-              No decisions recorded yet. Decisions made in the Review Queue will appear here.
-            </div>
-          ) : (
-            <div className="engineer-list">
-              {engineers.slice(0, 5).map((row, idx) => {
-                const total = row.approved + row.rejected;
-                const approvedPct = total > 0 ? Math.round((row.approved / total) * 100) : 0;
-                const approvedWidth = (row.approved / maxDecisions) * 100;
-                const rejectedWidth = (row.rejected / maxDecisions) * 100;
-
-                return (
-                  <div key={row.engineer} className="engineer-item">
-                    <div className="engineer-meta">
-                      <span className="engineer-name">
-                        {idx === 0 && <span title="Top Reviewer">⭐</span>}
-                        {row.engineer}
-                      </span>
-                      <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
-                        <span className="engineer-badge">{approvedPct}% Approved</span>
-                        <span className="engineer-counts">
-                          {row.approved} approved · {row.rejected} rejected
-                        </span>
+            {recentCases.length === 0 ? (
+              <div style={{ padding: "30px 0", textAlign: "center", color: "var(--muted)", fontSize: "0.88rem" }}>
+                No recent enquiries in your category.
+              </div>
+            ) : (
+              <div className="urgent-items-list">
+                {recentCases.slice(0, 5).map((c) => (
+                  <div key={c.case_id} className="urgent-item-row">
+                    <div className="urgent-item-left">
+                      <div className="urgent-item-info">
+                        <span className="urgent-item-title">{c.customer_name || "Customer Inquiry"}</span>
+                        <span className="urgent-item-sub">{c.internal_ref} · {c.status}</span>
                       </div>
                     </div>
-                    <div className="engineer-bar-wrapper">
-                      <div
-                        className="engineer-fill-approved"
-                        style={{ width: `${approvedWidth}%` }}
-                        title={`${row.approved} Approved`}
-                      />
-                      <div
-                        className="engineer-fill-rejected"
-                        style={{ width: `${rejectedWidth}%` }}
-                        title={`${row.rejected} Rejected`}
-                      />
-                    </div>
+                    <Link to={`/cases/${c.case_id}`} className="btn btn-sm btn-outline" style={{ padding: "4px 10px", fontSize: "0.78rem" }}>
+                      Open →
+                    </Link>
                   </div>
-                );
-              })}
-            </div>
-          )}
+                ))}
+              </div>
+            )}
+          </div>
         </div>
-      </div>
+      )}
+
+      {/* 3. Middle Grid: Category Breakdown + Engineer Performance (Admin only) */}
+      {user?.role === "ADMIN" && (
+        <div className="dashboard-grid" style={{ marginBottom: 24 }}>
+          <div className="dashboard-card">
+            <div className="dashboard-card-head">
+              <h2 className="dashboard-card-title">
+                <PieChart size={18} style={{ color: "var(--brand)" }} />
+                Enquiries by Category
+              </h2>
+              <Link to="/cases" className="dashboard-card-action">
+                All Cases <ArrowRight size={14} />
+              </Link>
+            </div>
+
+            {categories.length === 0 ? (
+              <div style={{ padding: "30px 0", textAlign: "center", color: "var(--muted)", fontSize: "0.88rem" }}>
+                No categories assigned yet.
+              </div>
+            ) : (
+              <DonutChart
+                data={categories}
+                hoveredCategory={hoveredCategory}
+                onHoverCategory={setHoveredCategory}
+              />
+            )}
+          </div>
+
+          <div className="dashboard-card">
+            <div className="dashboard-card-head">
+              <h2 className="dashboard-card-title">
+                <BarChart3 size={18} style={{ color: "var(--brand)" }} />
+                Engineer Activity & Approvals
+              </h2>
+              <span className="stat-badge">{engineers.length} Active Engineers</span>
+            </div>
+
+            {engineers.length === 0 ? (
+              <div style={{ padding: "30px 0", textAlign: "center", color: "var(--muted)", fontSize: "0.88rem" }}>
+                No decisions recorded yet. Decisions made in the Review Queue will appear here.
+              </div>
+            ) : (
+              <div className="engineer-list">
+                {engineers.slice(0, 5).map((row, idx) => {
+                  const total = row.approved + row.rejected;
+                  const approvedPct = total > 0 ? Math.round((row.approved / total) * 100) : 0;
+                  const approvedWidth = (row.approved / maxDecisions) * 100;
+                  const rejectedWidth = (row.rejected / maxDecisions) * 100;
+
+                  return (
+                    <div key={row.engineer} className="engineer-item">
+                      <div className="engineer-meta">
+                        <span className="engineer-name">
+                          {idx === 0 && <span title="Top Reviewer">⭐</span>}
+                          {row.engineer}
+                        </span>
+                        <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
+                          <span className="engineer-badge">{approvedPct}% Approved</span>
+                          <span className="engineer-counts">
+                            {row.approved} approved · {row.rejected} rejected
+                          </span>
+                        </div>
+                      </div>
+                      <div className="engineer-bar-wrapper">
+                        <div
+                          className="engineer-fill-approved"
+                          style={{ width: barsAnimate ? `${approvedWidth}%` : "0%" }}
+                          title={`${row.approved} Approved`}
+                        />
+                        <div
+                          className="engineer-fill-rejected"
+                          style={{ width: barsAnimate ? `${rejectedWidth}%` : "0%" }}
+                          title={`${row.rejected} Rejected`}
+                        />
+                      </div>
+                    </div>
+                  );
+                })}
+              </div>
+            )}
+          </div>
+        </div>
+      )}
 
       {/* 4. Bottom Grid: Pipeline Funnel + Urgent Attention Items */}
       <div className="dashboard-grid">
-        {/* Priority Action Items Card */}
         <div className="dashboard-card">
           <div className="dashboard-card-head">
             <h2 className="dashboard-card-title">
-              <AlertTriangle size={18} style={{ color: "var(--warn)" }} />
+              <AlertTriangle size={18} style={{ color: "#4d7c0f" }} />
               Items Requiring Immediate Review
             </h2>
             <Link to="/" className="dashboard-card-action">
@@ -522,59 +594,57 @@ export default function Dashboard() {
             The following enquiries have pending engineer decisions or rejected AI matches waiting to be resolved:
           </p>
 
-            <div className="urgent-items-list">
-              {recentCases
-                .filter((c) => c.has_pending || c.has_rejected || c.status === "UNDER_REVIEW")
-                .slice(0, 3)
-                .map((c) => (
-                  <div key={c.case_id} className="urgent-item-row">
-                    <div className="urgent-item-left">
-                      <span
-                        className="urgent-item-badge"
-                        style={{
-                          background: c.has_rejected ? "var(--danger-tint)" : "var(--warn-tint)",
-                          color: c.has_rejected ? "var(--danger)" : "var(--warn)",
-                        }}
-                      >
-                        {c.has_rejected ? "Rejected Match" : "Review Needed"}
-                      </span>
-                      <div className="urgent-item-info">
-                        <span className="urgent-item-title">{c.customer_name || "Customer Inquiry"}</span>
-                        <span className="urgent-item-sub">
-                          {c.internal_ref} · {c.category || "General"}
-                        </span>
-                      </div>
-                    </div>
-
-                    <Link
-                      to={`/cases/${c.case_id}`}
-                      className="btn btn-sm btn-outline"
-                      style={{ padding: "4px 10px", fontSize: "0.78rem", whiteSpace: "nowrap" }}
+          <div className="urgent-items-list">
+            {recentCases
+              .filter((c) => c.has_pending || c.has_rejected || c.status === "UNDER_REVIEW")
+              .slice(0, 3)
+              .map((c) => (
+                <div key={c.case_id} className="urgent-item-row">
+                  <div className="urgent-item-left">
+                    <span
+                      className="urgent-item-badge"
+                      style={{
+                        background: c.has_rejected ? "var(--danger-tint)" : "#ecfccb",
+                        color: c.has_rejected ? "var(--danger)" : "#4d7c0f",
+                      }}
                     >
-                      Resolve →
-                    </Link>
+                      {c.has_rejected ? "Rejected Match" : "Review Needed"}
+                    </span>
+                    <div className="urgent-item-info">
+                      <span className="urgent-item-title">{c.customer_name || "Customer Inquiry"}</span>
+                      <span className="urgent-item-sub">
+                        {c.internal_ref} · {c.category || "General"}
+                      </span>
+                    </div>
                   </div>
-                ))}
 
-              {recentCases.filter((c) => c.has_pending || c.has_rejected || c.status === "UNDER_REVIEW").length ===
-                0 && (
-                <div
-                  style={{
-                    padding: "16px",
-                    textAlign: "center",
-                    fontSize: "0.82rem",
-                    color: "var(--brand)",
-                    background: "var(--brand-tint)",
-                    borderRadius: "8px",
-                  }}
-                >
-                  ✓ All received items have been reviewed! No blocked inquiries.
+                  <Link
+                    to={`/cases/${c.case_id}`}
+                    className="btn btn-sm btn-outline"
+                    style={{ padding: "4px 10px", fontSize: "0.78rem", whiteSpace: "nowrap" }}
+                  >
+                    Resolve →
+                  </Link>
                 </div>
-              )}
-            </div>
+              ))}
+
+            {recentCases.filter((c) => c.has_pending || c.has_rejected || c.status === "UNDER_REVIEW").length === 0 && (
+              <div
+                style={{
+                  padding: "16px",
+                  textAlign: "center",
+                  fontSize: "0.82rem",
+                  color: "var(--brand)",
+                  background: "var(--brand-tint)",
+                  borderRadius: "8px",
+                }}
+              >
+                ✓ All received items have been reviewed! No blocked inquiries.
+              </div>
+            )}
+          </div>
         </div>
 
-        {/* Quick Action Navigation */}
         <div className="dashboard-card">
           <div className="dashboard-card-head">
             <h2 className="dashboard-card-title">
@@ -604,15 +674,17 @@ export default function Dashboard() {
               </div>
             </Link>
 
-            <Link to="/users" className="quick-action-tile">
-              <div className="quick-action-icon">
-                <Users size={20} />
-              </div>
-              <div>
-                <div className="quick-action-title">Engineer Assignments</div>
-                <div className="quick-action-desc">Manage categories and user permissions</div>
-              </div>
-            </Link>
+            {user?.role === "ADMIN" && (
+              <Link to="/users" className="quick-action-tile">
+                <div className="quick-action-icon">
+                  <Users size={20} />
+                </div>
+                <div>
+                  <div className="quick-action-title">Engineer Assignments</div>
+                  <div className="quick-action-desc">Manage categories and user permissions</div>
+                </div>
+              </Link>
+            )}
 
             <Link to="/cases" className="quick-action-tile">
               <div className="quick-action-icon">
@@ -625,7 +697,6 @@ export default function Dashboard() {
             </Link>
           </div>
 
-          {/* Quick Summary Banner */}
           <div
             style={{
               marginTop: "auto",
