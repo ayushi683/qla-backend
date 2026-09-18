@@ -559,10 +559,11 @@ a { color: inherit; }
 .link-btn:hover { text-decoration: underline; }
 
 .disclosure-toggle {
-  background: var(--brand-tint); border: 1px solid var(--border); border-radius: 999px;
-  padding: 5px 12px; margin-top: 8px; font-size: 0.78rem; font-weight: 600; color: var(--brand-dark);
+  background: none; border: none; padding: 4px 0; margin-top: 8px;
+  font-size: 0.88rem; font-weight: 500; color: var(--brand-dark);
   cursor: pointer; display: inline-flex; align-items: center; gap: 6px;
 }
+.disclosure-toggle:hover { text-decoration: underline; }
 .disclosure-toggle:hover { background: var(--brand); color: white; border-color: var(--brand); }
 .disclosure-icon {
   display: inline-flex; align-items: center; justify-content: center;
@@ -837,8 +838,8 @@ a { color: inherit; }
 .modal-product-actions .btn { width: 100%; text-align: center; }
 .modal-edit-form { grid-column: 1 / -1; }
 .modal-alt-matches { grid-column: 1 / -1; margin-top: 10px; padding-top: 10px; border-top: 1px dashed var(--border); }
-.modal-alt-row { display: flex; align-items: center; gap: 10px; padding: 6px 0; font-size: 0.85rem; }
-.modal-alt-rationale { color: var(--muted); font-size: 0.78rem; flex: 1; }
+.modal-alt-row { display: flex; align-items: center; gap: 10px; padding: 6px 0; font-size: 0.88rem; }
+.modal-alt-rationale { color: var(--ink); font-size: 0.88rem; flex: 1; font-weight: 400; }
 
 .modal-product-row.is-rejected { background: #fdf2f2; border-color: #f3d0ce; }
 .rejected-note { color: var(--danger); font-weight: 700; font-size: 0.85rem; }
@@ -2308,6 +2309,7 @@ a { color: inherit; }
   border-radius: 7px;
   text-decoration: none;
   transition: all 0.15s ease;
+  white-space: nowrap;
 }
 .cases-btn-open:hover {
   background: #16694a;
@@ -2327,6 +2329,7 @@ a { color: inherit; }
   border-radius: 7px;
   cursor: pointer;
   transition: all 0.15s ease;
+  white-space: nowrap;
 }
 .cases-btn-ai:hover:not(:disabled) {
   background: #16694a;

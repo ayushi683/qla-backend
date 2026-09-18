@@ -368,7 +368,7 @@ export default function CasesList() {
                     <th style={{ minWidth: 220 }}>Customer & Project</th>
                     <th style={{ width: 130 }}>Received</th>
                     <th style={{ width: 150 }}>AI Match Conf.</th>
-                    <th style={{ width: 180, textAlign: "right" }}>Actions</th>
+                    <th style={{ width: 200, textAlign: "center" }}>Actions</th>
                   </tr>
                 </thead>
                 <tbody>

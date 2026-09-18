@@ -147,7 +147,7 @@ export default function ProductMatchCard({ item, onChanged, onRejected, onQuotat
             className="disclosure-toggle"
             onClick={() => setShowAlternatives(!showAlternatives)}
           >
-            {otherRecs.length} other suggested match{otherRecs.length > 1 ? "es" : ""} {showAlternatives ? "▲" : "▼"}
+            {otherRecs.length} other suggested match{otherRecs.length > 1 ? "es" : ""}
           </button>
           {showAlternatives && otherRecs.map((rec) => (
             <div className="modal-alt-row" key={rec.recommendation_id}>
