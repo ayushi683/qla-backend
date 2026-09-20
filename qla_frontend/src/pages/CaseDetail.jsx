@@ -246,42 +246,57 @@ export default function CaseDetail() {
           </div>
 
           <div className="overview-card">
-            <h3 className="modal-section-heading">Original Enquiry</h3>
+            <h3 className="modal-section-heading">
+              Original Enquiry
+              {revisionsData?.revisions?.length > 1 && (
+                <span style={{ fontWeight: 400, fontSize: "0.8rem", color: "var(--muted)", marginLeft: 8 }}>
+                  (all {revisionsData.revisions.length} revisions combined)
+                </span>
+              )}
+            </h3>
             {docsError && <div className="flash flash-error">{docsError}</div>}
-            {documents === null ? (
-              <p className="no-recs">Loading…</p>
-            ) : documents.length > 0 ? (
-              <div className="doc-list">
-                {documents.map((doc) => (
-                  <div className="doc-row" key={doc.document_id}>
-                    <div className="doc-row-left">
-                      <span className="doc-icon">{docIcon(doc.content_type)}</span>
-                      <div>
-                        <div className="doc-name">{doc.file_name}</div>
-                        <div className="doc-meta">{formatBytes(doc.size_bytes)}</div>
+            {(() => {
+              const combinedDocs = (revisionsData?.revisions?.length > 1 && revisionsData?.documents)
+                ? revisionsData.documents
+                : documents;
+              if (combinedDocs === null) return <p className="no-recs">Loading…</p>;
+              if (combinedDocs.length > 0) {
+                return (
+                  <div className="doc-list">
+                    {combinedDocs.map((doc) => (
+                      <div className="doc-row" key={doc.document_id}>
+                        <div className="doc-row-left">
+                          <span className="doc-icon">{docIcon(doc.content_type)}</span>
+                          <div>
+                            <div className="doc-name">{doc.file_name}</div>
+                            <div className="doc-meta">{formatBytes(doc.size_bytes)}</div>
+                          </div>
+                        </div>
+                        <div style={{ display: "flex", gap: 6 }}>
+                          {doc.content_type === "application/pdf" && (
+                            <button className="btn btn-small" onClick={() => setViewingDoc(doc)}>Preview</button>
+                          )}
+                          <button className="btn btn-small" onClick={() => handleDownloadDoc(doc)}>Download</button>
+                        </div>
                       </div>
-                    </div>
-                    <div style={{ display: "flex", gap: 6 }}>
-                      {doc.content_type === "application/pdf" && (
-                        <button className="btn btn-small" onClick={() => setViewingDoc(doc)}>Preview</button>
-                      )}
-                      <button className="btn btn-small" onClick={() => handleDownloadDoc(doc)}>Download</button>
-                    </div>
+                    ))}
                   </div>
-                ))}
-              </div>
-            ) : enquiryEmail ? (
-              <div className="enquiry-email-card">
-                <div className="enquiry-email-meta">
-                  <span><strong>From:</strong> {enquiryEmail.sender_email || "—"}</span>
-                  <span><strong>Subject:</strong> {enquiryEmail.subject || "—"}</span>
-                </div>
-                <pre className="enquiry-email-body">{enquiryEmail.body_text || "(no body text)"}</pre>
-                <p className="enquiry-email-note">No documents were attached. Showing the enquiry email itself.</p>
-              </div>
-            ) : (
-              <p className="no-recs">No documents or enquiry email on file for this case.</p>
-            )}
+                );
+              }
+              if (enquiryEmail) {
+                return (
+                  <div className="enquiry-email-card">
+                    <div className="enquiry-email-meta">
+                      <span><strong>From:</strong> {enquiryEmail.sender_email || "—"}</span>
+                      <span><strong>Subject:</strong> {enquiryEmail.subject || "—"}</span>
+                    </div>
+                    <pre className="enquiry-email-body">{enquiryEmail.body_text || "(no body text)"}</pre>
+                    <p className="enquiry-email-note">No documents were attached — showing the enquiry email itself.</p>
+                  </div>
+                );
+              }
+              return <p className="no-recs">No documents or enquiry email on file for this case.</p>;
+            })()}
           </div>
         </div>
       )}
@@ -497,19 +512,29 @@ export default function CaseDetail() {
                   <tr><th>Revision</th><th>Ref</th><th>Status</th><th>Received</th><th></th></tr>
                 </thead>
                 <tbody>
-                  {revisionsData.revisions.slice().reverse().map((rev) => (
-                    <tr key={rev.case_id}>
-                      <td>R{rev.revision_no} {rev.case_id === parseInt(caseId) && <span style={{ color: "var(--success)", fontWeight: 700 }}>· Current</span>}</td>
-                      <td>{rev.internal_ref}</td>
-                      <td><span className={statusClass(rev.status)}>{rev.status}</span></td>
-                      <td>{formatDateTime(rev.enq_received_at)}</td>
-                      <td>
-                        {rev.case_id !== parseInt(caseId) && (
-                          <Link className="link-btn" to={`/cases/${rev.case_id}`}>View</Link>
-                        )}
-                      </td>
-                    </tr>
-                  ))}
+                  {revisionsData.revisions.slice().reverse().map((rev) => {
+                    const isCurrent = rev.case_id === parseInt(caseId);
+                    return (
+                      <tr key={rev.case_id} style={isCurrent ? { background: "var(--brand-tint)" } : {}}>
+                        <td>
+                          R{rev.revision_no}
+                          {isCurrent && (
+                            <span style={{ color: "var(--success)", fontWeight: 700, marginLeft: 6 }}>
+                              ● Currently Viewing
+                            </span>
+                          )}
+                        </td>
+                        <td>{rev.internal_ref}</td>
+                        <td><span className={statusClass(rev.status)}>{rev.status}</span></td>
+                        <td>{formatDateTime(rev.enq_received_at)}</td>
+                        <td>
+                          {!isCurrent && (
+                            <Link className="link-btn" to={`/cases/${rev.case_id}`}>View this revision →</Link>
+                          )}
+                        </td>
+                      </tr>
+                    );
+                  })}
                 </tbody>
               </table>
             </>
