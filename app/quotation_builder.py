@@ -31,11 +31,55 @@ def _letter(i):
     return chr(ord("A") + i)
 
 
-def build_quotation_docx(case, quote_lines, revision_no):
+def quotation_docx_filename(internal_ref: str | None, revision_no: int) -> str:
+    safe = "".join(
+        ch if (ch.isalnum() or ch in "-_.") else "-"
+        for ch in (internal_ref or "quotation")
+    )
+    return f"{safe}_R{int(revision_no or 0)}.docx"
+
+
+def resolve_quotation_file(uri: str | None = None, filename: str | None = None) -> str | None:
+    """Find a generated .docx under instance/quotations, ignoring slash direction."""
+    names: list[str] = []
+    for raw in (uri, filename):
+        if not raw:
+            continue
+        base = os.path.basename(str(raw).replace("\\", "/").strip())
+        if base and base not in {".", ".."}:
+            names.append(base)
+    seen: set[str] = set()
+    for name in names:
+        key = name.lower()
+        if key in seen:
+            continue
+        seen.add(key)
+        path = os.path.join(QUOTATIONS_DIR, name)
+        if os.path.isfile(path):
+            return path
+    return None
+
+
+def _inr(value) -> str:
+    try:
+        n = float(value)
+    except (TypeError, ValueError):
+        return "—"
+    return f"Rs. {n:,.2f}"
+
+
+def build_quotation_docx(case, quote_lines, revision_no, pricing=None):
     """quote_lines: list of QuotationLine-like objects (model_code, description,
-    qty, uom, technical_spec_text). Returns the relative path written."""
+    qty, uom, technical_spec_text). Returns a posix relative path."""
 
     os.makedirs(QUOTATIONS_DIR, exist_ok=True)
+
+    price_by_line: dict[int, object] = {}
+    if pricing is not None:
+        for pl in getattr(pricing, "lines", None) or []:
+            qid = getattr(pl, "quote_line_id", None)
+            if qid is not None:
+                price_by_line[int(qid)] = pl
 
     doc = Document()
 
@@ -97,29 +141,47 @@ def build_quotation_docx(case, quote_lines, revision_no):
         add_row("Quantity", qty_display)
         if line.technical_spec_text:
             add_row("Specification", line.technical_spec_text)
+        pl = price_by_line.get(int(getattr(line, "quote_line_id", 0) or 0))
+        if pl is not None and getattr(pl, "unit_price", None) is not None:
+            add_row("Unit Price", _inr(pl.unit_price))
+            add_row("Amount", _inr(getattr(pl, "line_total", None) or pl.unit_price))
 
         doc.add_paragraph()  # spacer between items
 
-    # --- Pricing note (we don't have a pricing engine wired in yet) ---
-    pricing_note = doc.add_paragraph()
-    pricing_note.add_run(
-        "Pricing: to be confirmed separately \u2014 please contact us for unit pricing "
-        "against the above model numbers."
-    ).italic = True
+    if pricing is not None and getattr(pricing, "grand_total", None) is not None:
+        totals = doc.add_table(rows=0, cols=2)
+        totals.style = "Table Grid"
+
+        def add_total(label, value):
+            row = totals.add_row()
+            row.cells[0].text = label
+            row.cells[1].text = value
+
+        if getattr(pricing, "discount_pct", None):
+            add_total("Discount", f"{pricing.discount_pct} %")
+        if getattr(pricing, "tax_pct", None):
+            add_total("Tax", f"{pricing.tax_pct} %")
+        if getattr(pricing, "freight_amount", None):
+            add_total("Freight", _inr(pricing.freight_amount))
+        add_total("Grand Total", _inr(pricing.grand_total))
+        if getattr(pricing, "currency_code", None):
+            add_total("Currency", str(pricing.currency_code))
+    else:
+        pricing_note = doc.add_paragraph()
+        pricing_note.add_run(
+            "Pricing: to be confirmed separately — please contact us for unit pricing "
+            "against the above model numbers."
+        ).italic = True
 
     doc.add_paragraph()
     doc.add_paragraph("Terms & Conditions: as per our standard terms.")
     doc.add_paragraph()
     doc.add_paragraph("For Pune Techtrol Pvt. Ltd.")
 
-    filename = f"{case.internal_ref}_R{revision_no}.docx"
+    filename = quotation_docx_filename(getattr(case, "internal_ref", None), revision_no)
     out_path = os.path.join(QUOTATIONS_DIR, filename)
     doc.save(out_path)
-
-    # Return a path relative to the instance folder, matching how the
-    # schema's docx_blob_uri / attachment fields are meant to be used
-    # (a pointer to the file, not the file itself).
-    return os.path.join("quotations", filename)
+    return f"quotations/{filename}"
 
 
 def draft_email_text(case, quote_lines):

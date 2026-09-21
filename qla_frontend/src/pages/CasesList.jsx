@@ -22,6 +22,18 @@ function statusClass(status) {
   return `cases-status-badge cases-status-${(status || "").toLowerCase()}`;
 }
 
+function formatAiResult(result) {
+  const identified = result.items_identified ?? result.items_matched ?? 0;
+  const matched = result.items_matched ?? 0;
+  if (result.needs_details || result.decision === "PRODUCTS_MATCHED_NEED_DETAILS") {
+    return `${identified} product${identified === 1 ? "" : "s"} identified — model details needed`;
+  }
+  if (result.decision === "PRODUCTS_MATCHED") {
+    return `${matched} product${matched === 1 ? "" : "s"} matched`;
+  }
+  return `${result.decision || "done"} (${identified} identified)`;
+}
+
 function confidenceTier(conf) {
   if (conf === null || conf === undefined) return "none";
   const n = parseFloat(conf);
@@ -43,13 +55,27 @@ function getPageNumbers(current, total) {
   return range;
 }
 
+const CASES_FILTERS_KEY = "qla.casesList.filters";
+
+function loadCasesFilters() {
+  try {
+    const raw = sessionStorage.getItem(CASES_FILTERS_KEY);
+    if (!raw) return {};
+    const parsed = JSON.parse(raw);
+    return parsed && typeof parsed === "object" ? parsed : {};
+  } catch {
+    return {};
+  }
+}
+
 export default function CasesList() {
   const { data: cases, loading, error, reload } = usePolling(() => api.cases(), 12000);
-  const [search, setSearch] = useState("");
-  const [dateFrom, setDateFrom] = useState("");
-  const [dateTo, setDateTo] = useState("");
-  const [statusFilter, setStatusFilter] = useState("all");
-  const [page, setPage] = useState(1);
+  const savedFilters = useRef(loadCasesFilters()).current;
+  const [search, setSearch] = useState(savedFilters.search || "");
+  const [dateFrom, setDateFrom] = useState(savedFilters.dateFrom || "");
+  const [dateTo, setDateTo] = useState(savedFilters.dateTo || "");
+  const [statusFilter, setStatusFilter] = useState(savedFilters.statusFilter || "all");
+  const [page, setPage] = useState(Number(savedFilters.page) > 0 ? Number(savedFilters.page) : 1);
   const [aiRunningId, setAiRunningId] = useState(null);
   const [aiResults, setAiResults] = useState({});
   const [selectedIds, setSelectedIds] = useState(new Set());
@@ -57,6 +83,14 @@ export default function CasesList() {
   const [batchProgress, setBatchProgress] = useState(null);
   const tableWrapRef = useRef(null);
   const PAGE_SIZE = 12;
+  const skipPageReset = useRef(true);
+
+  useEffect(() => {
+    sessionStorage.setItem(
+      CASES_FILTERS_KEY,
+      JSON.stringify({ search, dateFrom, dateTo, statusFilter, page })
+    );
+  }, [search, dateFrom, dateTo, statusFilter, page]);
 
   // Real-time status counts derived from loaded cases
   const statusCounts = useMemo(() => {
@@ -94,6 +128,10 @@ export default function CasesList() {
   }, [cases, search, dateFrom, dateTo, statusFilter]);
 
   useEffect(() => {
+    if (skipPageReset.current) {
+      skipPageReset.current = false;
+      return;
+    }
     setPage(1);
   }, [search, dateFrom, dateTo, statusFilter]);
 
@@ -108,7 +146,8 @@ export default function CasesList() {
   }, []);
 
   const totalPages = Math.max(1, Math.ceil(filtered.length / PAGE_SIZE));
-  const paginated = filtered.slice((page - 1) * PAGE_SIZE, page * PAGE_SIZE);
+  const safePage = Math.min(page, totalPages);
+  const paginated = filtered.slice((safePage - 1) * PAGE_SIZE, safePage * PAGE_SIZE);
 
   function clearDates() {
     setDateFrom("");
@@ -120,6 +159,8 @@ export default function CasesList() {
     setDateFrom("");
     setDateTo("");
     setStatusFilter("all");
+    setPage(1);
+    sessionStorage.removeItem(CASES_FILTERS_KEY);
   }
 
   async function handleRunAiMatch(caseId) {
@@ -494,7 +535,7 @@ export default function CasesList() {
                               >
                                 {aiResults[c.case_id].status === "error"
                                   ? aiResults[c.case_id].raw_message
-                                  : `${aiResults[c.case_id].decision} (${aiResults[c.case_id].items_matched || 0} matched)`}
+                                  : formatAiResult(aiResults[c.case_id])}
                               </span>
                             </div>
                           )}
@@ -510,21 +551,21 @@ export default function CasesList() {
             {totalPages > 1 && (
               <div className="cases-pagination-wrap">
                 <div className="cases-pagination-info">
-                  Showing <strong>{(page - 1) * PAGE_SIZE + 1}</strong> to{" "}
-                  <strong>{Math.min(page * PAGE_SIZE, filtered.length)}</strong> of{" "}
+                  Showing <strong>{(safePage - 1) * PAGE_SIZE + 1}</strong> to{" "}
+                  <strong>{Math.min(safePage * PAGE_SIZE, filtered.length)}</strong> of{" "}
                   <strong>{filtered.length}</strong> inquiries
                 </div>
 
                 <div className="cases-pagination-btns">
                   <button
                     className="cases-page-btn"
-                    disabled={page === 1}
-                    onClick={() => setPage(page - 1)}
+                    disabled={safePage === 1}
+                    onClick={() => setPage(safePage - 1)}
                   >
                     ‹ Prev
                   </button>
 
-                  {getPageNumbers(page, totalPages).map((p, i) =>
+                  {getPageNumbers(safePage, totalPages).map((p, i) =>
                     p === "..." ? (
                       <span key={"dots-" + i} style={{ padding: "0 6px", color: "var(--muted)" }}>
                         …
@@ -532,7 +573,7 @@ export default function CasesList() {
                     ) : (
                       <button
                         key={p}
-                        className={`cases-page-btn ${p === page ? "active" : ""}`}
+                        className={`cases-page-btn ${p === safePage ? "active" : ""}`}
                         onClick={() => setPage(p)}
                       >
                         {p}
@@ -542,8 +583,8 @@ export default function CasesList() {
 
                   <button
                     className="cases-page-btn"
-                    disabled={page === totalPages}
-                    onClick={() => setPage(page + 1)}
+                    disabled={safePage === totalPages}
+                    onClick={() => setPage(safePage + 1)}
                   >
                     Next ›
                   </button>

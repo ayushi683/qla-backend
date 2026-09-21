@@ -4,13 +4,23 @@ import { api } from "../api/client";
 import ProductMatchCard from "./ProductMatchCard";
 import PdfViewerModal from "./PdfViewerModal";
 
-function docIcon(contentType) {
-  if (!contentType) return "📄";
-  if (contentType.includes("pdf")) return "📕";
-  if (contentType.includes("word")) return "📝";
-  if (contentType.includes("sheet") || contentType.includes("excel")) return "📊";
-  if (contentType.includes("image")) return "🖼️";
+function docIcon(contentType, fileName) {
+  const ct = (contentType || "").toLowerCase();
+  const name = (fileName || "").toLowerCase();
+  if (ct.includes("pdf") || name.endsWith(".pdf")) return "📕";
+  if (ct.includes("word") || name.endsWith(".doc") || name.endsWith(".docx") || name.endsWith(".rtf")) return "📝";
+  if (ct.includes("sheet") || ct.includes("excel") || /\.xlsx?$/.test(name) || name.endsWith(".csv")) return "📊";
+  if (ct.includes("image") || /\.(png|jpe?g|gif|tiff?|bmp|webp)$/.test(name)) return "🖼️";
+  if (ct.includes("zip") || /\.(zip|rar|7z)$/.test(name)) return "📦";
+  if (name.endsWith(".msg") || name.endsWith(".eml") || ct.includes("outlook")) return "✉️";
+  if (name.endsWith(".dwg") || name.endsWith(".dxf")) return "📐";
   return "📄";
+}
+
+function isPdfDoc(doc) {
+  const ct = (doc?.content_type || "").toLowerCase();
+  const name = (doc?.file_name || "").toLowerCase();
+  return ct.includes("pdf") || name.endsWith(".pdf");
 }
 
 export default function CaseReviewModal({ caseId, onClose, onChanged, onRejected }) {
@@ -88,11 +98,16 @@ export default function CaseReviewModal({ caseId, onClose, onChanged, onRejected
                 {documents.map((doc) => (
                   <div className="doc-row" key={doc.document_id}>
                     <div className="doc-row-left">
-                      <span className="doc-icon">{docIcon(doc.content_type)}</span>
-                      <div className="doc-name">{doc.file_name}</div>
+                      <span className="doc-icon">{docIcon(doc.content_type, doc.file_name)}</span>
+                      <div>
+                        <div className="doc-name">{doc.file_name}</div>
+                        {doc.revision_tag || doc.revision_no ? (
+                          <div className="doc-meta">{doc.revision_tag || `R${doc.revision_no}`}</div>
+                        ) : null}
+                      </div>
                     </div>
                     <div style={{ display: "flex", gap: 6 }}>
-                      {doc.content_type === "application/pdf" && (
+                      {isPdfDoc(doc) && (
                         <button className="btn btn-small" onClick={() => setViewingDoc(doc)}>View</button>
                       )}
                       <button className="btn btn-small" onClick={() => handleDownloadDoc(doc)}>Download</button>

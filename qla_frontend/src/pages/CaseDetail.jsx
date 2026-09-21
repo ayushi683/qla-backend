@@ -1,23 +1,51 @@
 import { useState, useEffect } from "react";
-import { Link, useParams, useNavigate } from "react-router-dom";
+import { Link, useParams } from "react-router-dom";
+import { Play, RefreshCw } from "lucide-react";
 import { api } from "../api/client";
 import { formatDateTime } from "../utils/dateFormat";
 import { usePolling } from "../api/usePolling";
 import ProductMatchCard from "../components/ProductMatchCard";
 import PdfViewerModal from "../components/PdfViewerModal";
 import GenerateQuotationModal from "../components/GenerateQuotationModal";
+import { topRecommendation } from "../utils/recommendations";
 
 function statusClass(status) {
   return `status-pill status-${(status || "").toLowerCase()}`;
 }
 
-function docIcon(contentType) {
-  if (!contentType) return "📄";
-  if (contentType.includes("pdf")) return "📕";
-  if (contentType.includes("word")) return "📝";
-  if (contentType.includes("sheet") || contentType.includes("excel")) return "📊";
-  if (contentType.includes("image")) return "🖼️";
+function docIcon(contentType, fileName) {
+  const ct = (contentType || "").toLowerCase();
+  const name = (fileName || "").toLowerCase();
+  if (ct.includes("pdf") || name.endsWith(".pdf")) return "📕";
+  if (ct.includes("word") || name.endsWith(".doc") || name.endsWith(".docx") || name.endsWith(".rtf")) return "📝";
+  if (ct.includes("sheet") || ct.includes("excel") || /\.xlsx?$/.test(name) || name.endsWith(".csv")) return "📊";
+  if (ct.includes("image") || /\.(png|jpe?g|gif|tiff?|bmp|webp)$/.test(name)) return "🖼️";
+  if (ct.includes("zip") || /\.(zip|rar|7z)$/.test(name)) return "📦";
+  if (name.endsWith(".msg") || name.endsWith(".eml") || ct.includes("outlook")) return "✉️";
+  if (name.endsWith(".dwg") || name.endsWith(".dxf")) return "📐";
   return "📄";
+}
+
+function isPdfDoc(doc) {
+  const ct = (doc?.content_type || "").toLowerCase();
+  const name = (doc?.file_name || "").toLowerCase();
+  return ct.includes("pdf") || name.endsWith(".pdf");
+}
+
+function docRevisionLabel(doc) {
+  if (doc?.revision_tag) return doc.revision_tag;
+  if (doc?.revision_no) return `R${doc.revision_no}`;
+  return "";
+}
+
+function mergeDocumentLists(...lists) {
+  const byId = new Map();
+  for (const list of lists) {
+    for (const doc of list || []) {
+      if (doc?.document_id != null) byId.set(doc.document_id, doc);
+    }
+  }
+  return Array.from(byId.values());
 }
 
 function formatBytes(n) {
@@ -27,12 +55,16 @@ function formatBytes(n) {
   return `${(n / (1024 * 1024)).toFixed(1)} MB`;
 }
 
-function topRecommendation(item) {
-  const recs = item.recommendations || [];
-  if (recs.length === 0) return null;
-  const approved = recs.filter((r) => r.is_selected_by_engineer === true);
-  if (approved.length > 0) return approved[0];
-  return [...recs].sort((a, b) => a.rank_no - b.rank_no)[0];
+function formatAiResult(result) {
+  const identified = result.items_identified ?? result.items_matched ?? 0;
+  const matched = result.items_matched ?? 0;
+  if (result.needs_details || result.decision === "PRODUCTS_MATCHED_NEED_DETAILS") {
+    return `${identified} product${identified === 1 ? "" : "s"} identified — model details needed`;
+  }
+  if (result.decision === "PRODUCTS_MATCHED") {
+    return `${matched} product${matched === 1 ? "" : "s"} matched`;
+  }
+  return `${result.decision || "done"} (${identified} identified)`;
 }
 
 const TABS = [
@@ -45,7 +77,6 @@ const TABS = [
 
 export default function CaseDetail() {
   const { caseId } = useParams();
-  const navigate = useNavigate();
   const { data: caseData, loading, error, refresh } = usePolling(
     () => api.caseDetail(caseId),
     12000
@@ -70,20 +101,41 @@ export default function CaseDetail() {
   const [emailBody, setEmailBody] = useState("");
   const [savingEmail, setSavingEmail] = useState(false);
   const [sending, setSending] = useState(false);
+  const [aiRunning, setAiRunning] = useState(false);
+  const [productsRefreshing, setProductsRefreshing] = useState(false);
+  const [aiError, setAiError] = useState("");
+  const [aiMessage, setAiMessage] = useState("");
 
   useEffect(() => {
-    api.caseDocuments(caseId)
-      .then((docs) => {
-        setDocuments(docs);
-        if (!docs || docs.length === 0) {
-          api.enquiryEmail(caseId).then(setEnquiryEmail).catch(() => setEnquiryEmail(null));
-        }
-      })
-      .catch((e) => setDocsError(e.message || "Could not load enquiry documents"));
-  }, [caseId]);
+    setAiError("");
+    setAiMessage("");
+    setTab("overview");
+    refresh();
+  }, [caseId, refresh]);
 
   useEffect(() => {
-    api.caseRevisions(caseId).then(setRevisionsData).catch(() => setRevisionsData(null));
+    let cancelled = false;
+    setDocsError("");
+    Promise.all([
+      api.caseDocuments(caseId).catch((e) => {
+        if (!cancelled) setDocsError(e.message || "Could not load enquiry documents");
+        return [];
+      }),
+      api.caseRevisions(caseId).catch(() => null),
+    ]).then(([docs, revisions]) => {
+      if (cancelled) return;
+      setRevisionsData(revisions);
+      const merged = mergeDocumentLists(docs, revisions?.documents);
+      setDocuments(merged);
+      if (!merged.length) {
+        api.enquiryEmail(caseId).then((email) => {
+          if (!cancelled) setEnquiryEmail(email);
+        }).catch(() => {
+          if (!cancelled) setEnquiryEmail(null);
+        });
+      }
+    });
+    return () => { cancelled = true; };
   }, [caseId]);
 
   useEffect(() => {
@@ -116,11 +168,13 @@ export default function CaseDetail() {
   }
 
   async function handleDownloadQuotation() {
-    if (!quotation?.quotation?.docx_blob_uri) return;
-    const filename = quotation.quotation.docx_blob_uri.split("/").pop();
     setDownloading(true);
     try {
-      await api.downloadBlob(`/api/quotations/download/${filename}`, filename);
+      const filename = (quotation?.quotation?.docx_blob_uri || "quotation.docx")
+        .replaceAll("\\", "/")
+        .split("/")
+        .pop();
+      await api.downloadBlob(`/api/cases/${caseId}/quotation/download`, filename);
     } catch (e) {
       setQuotationError(e.message || "Download failed");
     } finally {
@@ -165,6 +219,30 @@ export default function CaseDetail() {
       setSending(false);
     }
   }
+
+  async function handleRunAiMatch() {
+    setAiRunning(true);
+    setAiError("");
+    setAiMessage("");
+    try {
+      const result = await api.runAiMatch(caseId);
+      if (result?.status === "error") {
+        setAiError(result.raw_message || result.error || "AI match failed");
+        return;
+      }
+      setAiMessage(formatAiResult(result || {}));
+      setTab("products");
+      setProductsRefreshing(true);
+      await refresh();
+    } catch (e) {
+      setAiError(e.message || "AI match failed");
+    } finally {
+      setAiRunning(false);
+      setProductsRefreshing(false);
+    }
+  }
+
+  const matchingBusy = aiRunning || productsRefreshing;
 
   if (loading && !caseData) {
     return <div className="page"><div className="loading-state">Loading…</div></div>;
@@ -218,9 +296,30 @@ export default function CaseDetail() {
 
       {/* ---------- OVERVIEW ---------- */}
       {tab === "overview" && (
-        <div>
+        <div className="matching-area" style={{ position: "relative" }}>
+          {matchingBusy && (
+            <div className="case-ai-overlay" role="status" aria-live="polite">
+              <RefreshCw size={28} className="spin" />
+              <p>{aiRunning ? "Running AI match on enquiry files…" : "Refreshing products & matching…"}</p>
+            </div>
+          )}
           <div className="overview-card" style={{ marginBottom: 20 }}>
-            <h3 className="modal-section-heading">Case Information</h3>
+            <div className="overview-card-head">
+              <h3 className="modal-section-heading" style={{ margin: 0 }}>Case Information</h3>
+              <button
+                className="cases-btn-ai"
+                disabled={matchingBusy}
+                onClick={handleRunAiMatch}
+                title="Run AI technical specification match"
+              >
+                {aiRunning ? <RefreshCw size={13} className="spin" /> : <Play size={13} fill="currentColor" />}
+                {aiRunning ? "Running AI…" : productsRefreshing ? "Refreshing…" : "Run AI"}
+              </button>
+            </div>
+            {aiError && <div className="flash flash-error" style={{ marginBottom: 12 }}>{aiError}</div>}
+            {aiMessage && !aiError && (
+              <div className="flash flash-success" style={{ marginBottom: 12 }}>{aiMessage}</div>
+            )}
             <dl className="summary-list">
               <div><dt>Customer / Project</dt><dd>{caseData.customer_name || "—"}{caseData.project_name ? ` · ${caseData.project_name}` : ""}</dd></div>
               <div><dt>Received</dt><dd>{formatDateTime(caseData.enq_received_at)}</dd></div>
@@ -255,14 +354,16 @@ export default function CaseDetail() {
                 {documents.map((doc) => (
                   <div className="doc-row" key={doc.document_id}>
                     <div className="doc-row-left">
-                      <span className="doc-icon">{docIcon(doc.content_type)}</span>
+                      <span className="doc-icon">{docIcon(doc.content_type, doc.file_name)}</span>
                       <div>
                         <div className="doc-name">{doc.file_name}</div>
-                        <div className="doc-meta">{formatBytes(doc.size_bytes)}</div>
+                        <div className="doc-meta">
+                          {[formatBytes(doc.size_bytes), docRevisionLabel(doc)].filter(Boolean).join(" · ")}
+                        </div>
                       </div>
                     </div>
                     <div style={{ display: "flex", gap: 6 }}>
-                      {doc.content_type === "application/pdf" && (
+                      {isPdfDoc(doc) && (
                         <button className="btn btn-small" onClick={() => setViewingDoc(doc)}>Preview</button>
                       )}
                       <button className="btn btn-small" onClick={() => handleDownloadDoc(doc)}>Download</button>
@@ -288,11 +389,27 @@ export default function CaseDetail() {
 
       {/* ---------- PRODUCTS & MATCHING ---------- */}
       {tab === "products" && (
-        <div>
+        <div className="matching-area" style={{ position: "relative" }}>
+          {matchingBusy && (
+            <div className="case-ai-overlay" role="status" aria-live="polite">
+              <RefreshCw size={28} className="spin" />
+              <p>{aiRunning ? "Running AI match on enquiry files…" : "Refreshing products & matching…"}</p>
+            </div>
+          )}
           <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 12 }}>
             <p className="page-sub" style={{ margin: 0 }}>{itemsToReview} of {caseData.line_items?.length || 0} items need a decision</p>
+            <button
+              className="cases-btn-ai"
+              disabled={matchingBusy}
+              onClick={handleRunAiMatch}
+            >
+              {aiRunning ? <RefreshCw size={13} className="spin" /> : <Play size={13} fill="currentColor" />}
+              {aiRunning ? "Running AI…" : "Run AI"}
+            </button>
           </div>
-          {caseData.line_items && caseData.line_items.length > 0 ? (
+          {matchingBusy && !caseData.line_items?.length ? (
+            <div className="loading-state">Fetching latest match results…</div>
+          ) : caseData.line_items && caseData.line_items.length > 0 ? (
             caseData.line_items.map((item) => (
               <ProductMatchCard
                 key={item.line_item_id}
@@ -354,7 +471,9 @@ export default function CaseDetail() {
                     <div className="quote-doc-head">
                       <div>
                         <div className="quote-doc-label">Generated document · R{quotation.quotation.revision_no}</div>
-                        <div className="quote-doc-filename">{quotation.quotation.docx_blob_uri.split("/").pop()}</div>
+                        <div className="quote-doc-filename">
+                          {(quotation.quotation.docx_blob_uri || "").replaceAll("\\", "/").split("/").pop()}
+                        </div>
                       </div>
                       <button className="btn btn-edit" onClick={handleDownloadQuotation} disabled={downloading}>
                         {downloading ? "Downloading…" : "Download .docx"}

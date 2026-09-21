@@ -1,4 +1,5 @@
 import os
+import re
 from datetime import datetime as _dt, timezone
 from decimal import Decimal
 from fastapi import APIRouter, Depends, HTTPException
@@ -16,8 +17,18 @@ from app.models.quotation import QuotationDraft, QuotationLine
 from app.models.outbound import OutboundMessage
 from app.models.email import EmailMessage
 from app.models.pricing import PricingSnapshot, PricingLine
-from app.ai_client import identify_product
-from app.quotation_builder import build_quotation_docx, draft_email_text, QUOTATIONS_DIR
+from app.ai_client import AiMatchError, identify_product
+from app.enquiry_documents import (
+    list_related_enquiry_documents,
+    load_ai_enquiry_files,
+)
+from app.quotation_builder import (
+    build_quotation_docx,
+    draft_email_text,
+    QUOTATIONS_DIR,
+    resolve_quotation_file,
+    quotation_docx_filename,
+)
 from app.schemas import (
     CaseOut, CaseDetailOut, LineItemOut, QuotationOut, QuotationDetailOut,
     QuotationLineOut, OutboundMessageOut, EditRecommendationRequest, CaseSummaryOut,
@@ -195,6 +206,7 @@ def case_detail(case_id: int, db: Session = Depends(get_db)):
     case = db.get(InquiryCase, case_id)
     if case is None:
         raise HTTPException(404, "Case not found")
+    _split_distinct_product_line_items(db, case_id)
     line_items = (
         db.query(ExtractedLineItem).filter_by(case_id=case_id).order_by(ExtractedLineItem.line_no).all()
     )
@@ -335,8 +347,20 @@ def generate_quotation_document(case_id: int, db: Session = Depends(get_db)):
         db.query(QuotationLine).filter_by(draft_id=quotation.draft_id)
         .order_by(QuotationLine.line_no).all()
     )
+    if not lines:
+        raise HTTPException(400, "Quotation has no line items to generate")
 
-    docx_rel_path = build_quotation_docx(case, lines, quotation.revision_no)
+    pricing = (
+        db.query(PricingSnapshot)
+        .options(joinedload(PricingSnapshot.lines))
+        .filter_by(case_id=case_id)
+        .order_by(PricingSnapshot.entered_at.desc())
+        .first()
+    )
+
+    docx_rel_path = build_quotation_docx(
+        case, lines, quotation.revision_no, pricing=pricing
+    )
     quotation.docx_blob_uri = docx_rel_path
     quotation.status = "GENERATED"
 
@@ -392,12 +416,65 @@ def update_quotation_line(case_id: int, line_item_id: int, payload: QuotationLin
     return QuotationLineOut.model_validate(line)
 
 
+@router.get("/cases/{case_id}/quotation/download")
+def download_case_quotation(case_id: int, db: Session = Depends(get_db)):
+    """Serve the generated Word offer. Rebuilds the file if the stored path is stale."""
+    case = db.get(InquiryCase, case_id)
+    if case is None:
+        raise HTTPException(404, "Case not found")
+    quotation = (
+        db.query(QuotationDraft).filter_by(case_id=case_id)
+        .order_by(QuotationDraft.revision_no.desc()).first()
+    )
+    if quotation is None:
+        raise HTTPException(404, "No quotation generated yet for this case")
+
+    path = resolve_quotation_file(
+        uri=quotation.docx_blob_uri,
+        filename=quotation_docx_filename(case.internal_ref, quotation.revision_no),
+    )
+    if not path:
+        lines = (
+            db.query(QuotationLine).filter_by(draft_id=quotation.draft_id)
+            .order_by(QuotationLine.line_no).all()
+        )
+        if not lines:
+            raise HTTPException(404, "Quotation file not found")
+        pricing = (
+            db.query(PricingSnapshot)
+            .options(joinedload(PricingSnapshot.lines))
+            .filter_by(case_id=case_id)
+            .order_by(PricingSnapshot.entered_at.desc())
+            .first()
+        )
+        uri = build_quotation_docx(case, lines, quotation.revision_no, pricing=pricing)
+        quotation.docx_blob_uri = uri
+        quotation.status = "GENERATED"
+        db.commit()
+        path = resolve_quotation_file(uri=uri)
+    if not path:
+        raise HTTPException(404, "Quotation file not found")
+    posix = "quotations/" + os.path.basename(path)
+    if (quotation.docx_blob_uri or "").replace("\\", "/") != posix:
+        quotation.docx_blob_uri = posix
+        db.commit()
+    return FileResponse(
+        path,
+        filename=os.path.basename(path),
+        media_type="application/vnd.openxmlformats-officedocument.wordprocessingml.document",
+    )
+
+
 @router.get("/quotations/download/{filename}")
 def download_quotation(filename: str):
-    path = os.path.join(QUOTATIONS_DIR, filename)
-    if not os.path.isfile(path):
+    path = resolve_quotation_file(filename=filename)
+    if not path:
         raise HTTPException(404, "File not found")
-    return FileResponse(path, filename=filename, media_type="application/vnd.openxmlformats-officedocument.wordprocessingml.document")
+    return FileResponse(
+        path,
+        filename=os.path.basename(path),
+        media_type="application/vnd.openxmlformats-officedocument.wordprocessingml.document",
+    )
 
 
 @router.get("/insights", response_model=dict)
@@ -619,15 +696,14 @@ def case_revisions(case_id: int, db: Session = Depends(get_db)):
     if case is None:
         raise HTTPException(404, "Case not found")
 
-    if not case.qtnno or not case.fyear:
-        return QtnGroupOut(qtnno=case.qtnno, fyear=case.fyear, revisions=[], documents=[])
-
-    siblings = (
-        db.query(InquiryCase)
-        .filter_by(qtnno=case.qtnno, fyear=case.fyear)
-        .order_by(InquiryCase.revision_no)
-        .all()
-    )
+    siblings = []
+    if case.qtnno and case.fyear:
+        siblings = (
+            db.query(InquiryCase)
+            .filter_by(qtnno=case.qtnno, fyear=case.fyear)
+            .order_by(InquiryCase.revision_no)
+            .all()
+        )
 
     revisions = [
         RevisionSummary(
@@ -637,18 +713,10 @@ def case_revisions(case_id: int, db: Session = Depends(get_db)):
         for s in siblings
     ]
 
-    sibling_ids = [s.case_id for s in siblings]
-    docs = (
-        db.query(InquiryDocument)
-        .filter(InquiryDocument.case_id.in_(sibling_ids))
-        .order_by(InquiryDocument.created_at)
-        .all()
-    )
-
     return QtnGroupOut(
         qtnno=case.qtnno, fyear=case.fyear,
         revisions=revisions,
-        documents=[DocumentOut.model_validate(d) for d in docs],
+        documents=list_related_enquiry_documents(db, case),
     )
 
 
@@ -708,10 +776,12 @@ def save_pricing(case_id: int, payload: PricingUpdateRequest, db: Session = Depe
     snapshot.notes = payload.notes
 
     subtotal = Decimal("0")
-    quote_lines_by_line_item = {ql.line_item_id: ql for ql in db.query(QuotationLine).filter_by(draft_id=quotation.draft_id).all()}
+    quote_lines = db.query(QuotationLine).filter_by(draft_id=quotation.draft_id).all()
+    by_quote_id = {ql.quote_line_id: ql for ql in quote_lines}
+    by_line_item = {ql.line_item_id: ql for ql in quote_lines if ql.line_item_id is not None}
 
     for line_input in payload.lines:
-        ql = quote_lines_by_line_item.get(line_input.quote_line_id)
+        ql = by_quote_id.get(line_input.quote_line_id) or by_line_item.get(line_input.quote_line_id)
         if ql is None:
             continue
 
@@ -754,113 +824,368 @@ def save_pricing(case_id: int, payload: PricingUpdateRequest, db: Session = Depe
     )
 
 
+def _same_gathered_sku(a: str, b: str) -> bool:
+    ca = re.sub(r"[\s\-–—_/]+", "", (a or "").upper())
+    cb = re.sub(r"[\s\-–—_/]+", "", (b or "").upper())
+    if not ca or not cb:
+        return False
+    if ca == cb:
+        return True
+    if len(ca) != len(cb):
+        longer, shorter = (ca, cb) if len(ca) > len(cb) else (cb, ca)
+        return len(shorter) >= 8 and longer.startswith(shorter)
+    diffs = [(ca[i], cb[i]) for i in range(len(ca)) if ca[i] != cb[i]]
+    if len(diffs) != 1:
+        return False
+    groups = (set("ILT1"), set("O0Q"), set("S5"), set("B8"), set("Z2"))
+    x, y = diffs[0]
+    return any(x in g and y in g for g in groups)
+
+
+def _clean_model_code(raw: str, family: str = "") -> str:
+    mn = str(raw or "").strip()
+    if "?" in mn:
+        return ""
+    if family and mn.upper() == family.upper() and "-" not in mn:
+        return ""
+    return mn
+
+
+def _alts_from_family(fam: dict, primary_mn: str) -> list[dict]:
+    seen = {primary_mn.upper()} if primary_mn else set()
+    alts = []
+    for sm in fam.get("suggested_models") or []:
+        cand = _clean_model_code(
+            sm.get("model_number") or sm.get("model_code"),
+            str(fam.get("product_family") or ""),
+        )
+        if not cand or cand.upper() in seen:
+            continue
+        if primary_mn and _same_gathered_sku(cand, primary_mn):
+            continue
+        if any(_same_gathered_sku(cand, prev) for prev in seen):
+            continue
+        seen.add(cand.upper())
+        try:
+            conf = float(sm.get("confidence") or fam.get("confidence") or 0)
+        except (TypeError, ValueError):
+            conf = 0.0
+        notes = sm.get("notes") or sm.get("rationale") or "Alternative model suggested by AI."
+        alts.append({
+            "_model": cand,
+            "_conf": max(0.0, min(conf, 0.9999)),
+            "_rationale": str(notes)[:1000],
+        })
+    return alts
+
+
+def _unify_ai_products(result: dict) -> list[dict]:
+    """One primary row per distinct product family, plus extra suggested SKUs."""
+    unified: dict[str, dict] = {}
+    for fam in result.get("products") or []:
+        family = str(fam.get("product_family") or fam.get("display_name") or "").strip()
+        if not family:
+            continue
+        mn = _clean_model_code(fam.get("model_number") or fam.get("model_code"), family)
+        if not mn:
+            for sm in fam.get("suggested_models") or []:
+                cand = _clean_model_code(sm.get("model_number") or sm.get("model_code"), family)
+                if cand:
+                    mn = cand
+                    break
+        try:
+            conf = float(fam.get("confidence") or 0)
+        except (TypeError, ValueError):
+            conf = 0.0
+        key = family.upper()
+        prev = unified.get(key)
+        better_sku = bool(mn) and (not prev or not prev["_model"])
+        better_conf = prev is None or conf > float(prev["_conf"])
+        alts = _alts_from_family(fam, mn)
+        if prev is None or better_sku or (better_conf and (bool(mn) == bool(prev["_model"]))):
+            display = str(fam.get("display_name") or family)
+            why = fam.get("why") or []
+            rationale = ", ".join(str(w) for w in why if w) or "Matched by AI model."
+            if not mn:
+                rationale = (rationale + " — family identified; exact model needs details.")[:1000]
+            merged_alts = alts
+            if prev:
+                seen = {mn.upper()} if mn else set()
+                merged_alts = []
+                for alt in alts + prev.get("_alts", []):
+                    code = (alt.get("_model") or "").upper()
+                    if not code or code in seen:
+                        continue
+                    if mn and _same_gathered_sku(code, mn):
+                        continue
+                    if any(_same_gathered_sku(code, prev) for prev in seen):
+                        continue
+                    seen.add(code)
+                    merged_alts.append(alt)
+            unified[key] = {
+                "_family": family,
+                "_display": display,
+                "_model": mn,
+                "_conf": max(0.0, min(conf, 0.9999)),
+                "_rationale": rationale[:1000],
+                "_needs_details": bool(fam.get("needs_details")) or not mn,
+                "_alts": merged_alts,
+            }
+        elif prev:
+            seen = {(prev["_model"] or "").upper()} if prev["_model"] else set()
+            seen.update((a.get("_model") or "").upper() for a in prev.get("_alts") or [])
+            for alt in alts:
+                code = (alt.get("_model") or "").upper()
+                if code and code not in seen and not (
+                    prev["_model"] and _same_gathered_sku(code, prev["_model"])
+                ) and not any(_same_gathered_sku(code, s) for s in seen):
+                    prev["_alts"].append(alt)
+                    seen.add(code)
+
+    rows = sorted(unified.values(), key=lambda r: r["_conf"], reverse=True)
+    strong = [r for r in rows if r["_conf"] >= 0.30]
+    return strong or rows
+
+
+def _persist_ai_match(
+    db: Session,
+    case: InquiryCase,
+    result: dict,
+    *,
+    enquiry_title: str | None = None,
+) -> tuple[int, int]:
+    """
+    Persist one Products & Matching card per distinct product family.
+    Extra SKUs for the same family stay as alternatives on that card.
+    """
+    products = _unify_ai_products(result)
+    decision = result.get("decision") or ""
+    persistable = decision in {
+        "PRODUCTS_MATCHED",
+        "PRODUCTS_MATCHED_NEED_DETAILS",
+    } or bool(products)
+    if not persistable or not products:
+        return (0, 0)
+
+    for rec in (
+        db.query(ProductRecommendation).filter_by(case_id=case.case_id).all()
+    ):
+        db.delete(rec)
+    db.flush()
+
+    line_items = (
+        db.query(ExtractedLineItem)
+        .filter_by(case_id=case.case_id)
+        .order_by(ExtractedLineItem.line_no, ExtractedLineItem.line_item_id)
+        .all()
+    )
+
+    while len(line_items) > len(products):
+        extra = line_items[-1]
+        quoted = db.query(QuotationLine).filter_by(line_item_id=extra.line_item_id).first()
+        if quoted is not None:
+            break
+        if extra.extraction_method == "ai-match" or extra.line_no > 1:
+            db.delete(extra)
+            line_items.pop()
+            db.flush()
+        else:
+            break
+
+    while len(line_items) < len(products):
+        line = ExtractedLineItem(
+            case_id=case.case_id,
+            line_no=len(line_items) + 1,
+            description=(enquiry_title or "AI-matched item")[:1000],
+            qty=Decimal("1"),
+            uom="NOS",
+            extraction_method="ai-match",
+        )
+        db.add(line)
+        db.flush()
+        line_items.append(line)
+
+    sku_matched = 0
+    for idx, row in enumerate(products):
+        line = line_items[idx]
+        if not line.qty or line.qty == 0:
+            line.qty = Decimal("1")
+        if not line.uom:
+            line.uom = "NOS"
+        line.product_type = row["_family"][:80]
+        line.description = (row["_display"] or row["_family"] or enquiry_title or "AI-matched item")[:1000]
+        recs_to_add = [{
+            "_model": row["_model"],
+            "_conf": row["_conf"],
+            "_rationale": row["_rationale"],
+            "_needs_details": row["_needs_details"],
+        }] + list(row.get("_alts") or [])
+        for rank, rec_row in enumerate(recs_to_add, start=1):
+            rec = ProductRecommendation(
+                case_id=case.case_id,
+                line_item_id=line.line_item_id,
+                rank_no=rank,
+                match_level="A" if rank == 1 and not rec_row.get("_needs_details") else "B",
+                family_code=row["_family"][:20],
+                model_code=(rec_row["_model"] or "")[:120] or None,
+                confidence=Decimal(str(round(float(rec_row["_conf"]), 4))),
+                rationale=rec_row["_rationale"],
+                is_selected_by_engineer=None,
+                decided_by=None,
+            )
+            db.add(rec)
+        if row["_model"]:
+            sku_matched += 1
+
+    if case.status == "QUOTED":
+        old_status = case.status
+        case.status = "IN_REVIEW"
+        db.add(
+            CaseStatusHistory(
+                case_id=case.case_id,
+                from_status=old_status,
+                to_status="IN_REVIEW",
+                changed_by="ai-rematch",
+            )
+        )
+    elif case.status in ("NEW", "EXTRACTED", None):
+        old_status = case.status
+        case.status = "IN_REVIEW"
+        db.add(
+            CaseStatusHistory(
+                case_id=case.case_id,
+                from_status=old_status or "NEW",
+                to_status="IN_REVIEW",
+                changed_by="ai-match",
+            )
+        )
+
+    return (len(products), sku_matched)
+
+
+def _recommendation_family_key(rec: ProductRecommendation) -> str:
+    fam = (rec.family_code or "").strip().upper()
+    if fam:
+        return fam
+    return (rec.model_code or "").strip().upper()
+
+
+def _split_distinct_product_line_items(db: Session, case_id: int) -> None:
+    """Split distinct product families that were stored on one enquiry line.
+
+    Same-family SKUs stay as alternatives. Different families each get a
+    Products & Matching card so they can be approved independently.
+    """
+    items = (
+        db.query(ExtractedLineItem)
+        .filter_by(case_id=case_id)
+        .order_by(ExtractedLineItem.line_no, ExtractedLineItem.line_item_id)
+        .all()
+    )
+    if not items:
+        return
+
+    changed = False
+    max_line_no = max((item.line_no or 1) for item in items)
+    for item in list(items):
+        recs = list(item.recommendations or [])
+        if len(recs) < 2:
+            continue
+        if db.query(QuotationLine).filter_by(line_item_id=item.line_item_id).first():
+            continue
+        groups: dict[str, list[ProductRecommendation]] = {}
+        for rec in recs:
+            key = _recommendation_family_key(rec) or f"REC-{rec.recommendation_id}"
+            groups.setdefault(key, []).append(rec)
+        if len(groups) < 2:
+            continue
+        ordered_keys = sorted(
+            groups,
+            key=lambda k: min((r.rank_no or 99) for r in groups[k]),
+        )
+        keep_recs = groups[ordered_keys[0]]
+        lead_keep = sorted(keep_recs, key=lambda r: r.rank_no or 99)[0]
+        if lead_keep.family_code:
+            item.product_type = lead_keep.family_code[:80]
+            item.description = (lead_keep.family_code or lead_keep.model_code or item.description or "")[:1000]
+        for extra_key in ordered_keys[1:]:
+            extra_recs = sorted(groups[extra_key], key=lambda r: r.rank_no or 99)
+            lead = extra_recs[0]
+            max_line_no += 1
+            new_line = ExtractedLineItem(
+                case_id=case_id,
+                line_no=max_line_no,
+                description=(lead.family_code or lead.model_code or "Suggested product")[:1000],
+                product_type=(lead.family_code or None),
+                qty=item.qty if item.qty else Decimal("1"),
+                uom=item.uom or "NOS",
+                extraction_method="ai-match",
+            )
+            db.add(new_line)
+            db.flush()
+            for rank, rec in enumerate(extra_recs, start=1):
+                rec.line_item_id = new_line.line_item_id
+                rec.rank_no = rank
+            changed = True
+        for rank, rec in enumerate(sorted(keep_recs, key=lambda r: r.rank_no or 99), start=1):
+            rec.rank_no = rank
+        changed = True
+
+    if changed:
+        db.commit()
+        db.expire_all()
+
+
 @router.post("/cases/{case_id}/run-ai-match", response_model=dict)
 def run_ai_match(case_id: int, db: Session = Depends(get_db)):
     case = db.get(InquiryCase, case_id)
     if case is None:
         raise HTTPException(404, "Case not found")
 
-    docs = db.query(InquiryDocument).filter_by(case_id=case_id).all()
-    if not docs:
-        raise HTTPException(400, "This case has no attached documents — the AI model requires at least one file to run.")
-
-    files_for_api = []
-    for doc in docs:
-        full_path = os.path.join(
-            os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__)))), "instance", doc.blob_uri,
-        )
-        if os.path.isfile(full_path):
-            with open(full_path, "rb") as f:
-                files_for_api.append((doc.file_name, f.read(), doc.content_type))
-
+    files_for_api, skipped = load_ai_enquiry_files(db, case)
     if not files_for_api:
-        raise HTTPException(400, "Attached documents could not be read from disk.")
+        raise HTTPException(
+            400,
+            "No enquiry documents to send to AI "
+            "(price/quotation files are excluded). Attach the customer RFQ/spec.",
+        )
 
     email_msg = (
         db.query(EmailMessage).filter_by(case_id=case_id, direction="INBOUND")
         .order_by(EmailMessage.received_at.desc()).first()
     )
 
-    result = identify_product(
-        files=files_for_api,
-        email_text=email_msg.body_text if email_msg else "",
-        subject=email_msg.subject if email_msg else "",
-        from_email=email_msg.sender_email if email_msg else "",
-    )
-
-    if result is None:
-        raise HTTPException(502, "Could not reach the AI matching service.")
+    try:
+        result = identify_product(
+            files=files_for_api,
+            email_text=email_msg.body_text if email_msg else "",
+            subject=email_msg.subject if email_msg else "",
+            from_email=email_msg.sender_email if email_msg else "",
+        )
+    except AiMatchError as exc:
+        raise HTTPException(502, exc.message) from exc
 
     decision = result.get("decision")
-    products = result.get("products", [])
-    matched_count = 0
-
-    if decision == "PRODUCTS_MATCHED" and products:
-        line_items = db.query(ExtractedLineItem).filter_by(case_id=case_id).all()
-        target_line_item = line_items[0] if line_items else None
-
-        if target_line_item is None:
-            target_line_item = ExtractedLineItem(
-                case_id=case_id, line_no=1,
-                description=result.get("search_query", "")[:500] or "AI-matched item",
-                qty=Decimal("1"), uom="NOS",
-            )
-            db.add(target_line_item)
-            db.flush()
-        else:
-            # Re-running AI match should reopen this item for review, even
-            # if it was previously approved/rejected — reset the old
-            # decision so the new suggestions actually show up in the
-            # Review Queue instead of being hidden as "already decided".
-            old_recs = db.query(ProductRecommendation).filter_by(line_item_id=target_line_item.line_item_id).all()
-            for old_rec in old_recs:
-                old_rec.is_selected_by_engineer = None
-
-        if case.status == "QUOTED":
-            old_status = case.status
-            case.status = "IN_REVIEW"
-            db.add(CaseStatusHistory(
-                case_id=case.case_id, from_status=old_status, to_status="IN_REVIEW",
-                changed_by="ai-rematch",
-            ))
-
-        for rank, family in enumerate(products[:5], start=1):
-            suggested_models = family.get("suggested_models") or []
-            if not suggested_models:
-                continue
-            top_model = suggested_models[0]
-            model_code = top_model.get("model_code")
-            if not model_code:
-                continue
-
-            confidence = family.get("confidence") or result.get("top_confidence") or 0.5
-            why_bits = family.get("why") or []
-            rationale = ", ".join(why_bits) if why_bits else "Matched by AI model."
-
-            if "?" in str(model_code):
-                missing = top_model.get("missing_segments") or []
-                if missing:
-                    rationale += " — incomplete code, still need: " + ", ".join(missing)
-                else:
-                    rationale += " — incomplete code, needs clarification."
-
-            rec = ProductRecommendation(
-                case_id=case_id, line_item_id=target_line_item.line_item_id, rank_no=rank,
-                match_level="A" if rank == 1 else "B",
-                model_code=str(model_code)[:120],
-                confidence=Decimal(str(confidence)),
-                rationale=rationale[:1000],
-            )
-            db.add(rec)
-            matched_count += 1
-
+    identified, matched_count = _persist_ai_match(
+        db,
+        case,
+        result,
+        enquiry_title=(email_msg.subject if email_msg else None),
+    )
     db.commit()
 
     return {
-        "status": "done", "decision": decision,
+        "status": "done",
+        "decision": decision,
         "items_matched": matched_count,
+        "items_identified": identified,
+        "needs_details": decision == "PRODUCTS_MATCHED_NEED_DETAILS"
+        or (identified > 0 and matched_count < identified),
+        "files_sent": [name for name, _b, _t in files_for_api],
+        "files_skipped_price_quotation": skipped,
         "raw_message": result.get("message", ""),
     }
+
 
 @router.post("/cases/{case_id}/quotation/email/send", response_model=OutboundMessageOut)
 def mark_quotation_email_sent(case_id: int, db: Session = Depends(get_db)):
@@ -948,92 +1273,35 @@ def _run_ai_match_for_case(db: Session, case_id: int) -> BulkAiMatchResultItem:
     if case is None:
         return BulkAiMatchResultItem(case_id=case_id, status="error", error="Case not found")
 
-    docs = db.query(InquiryDocument).filter_by(case_id=case_id).all()
-    if not docs:
-        return BulkAiMatchResultItem(case_id=case_id, status="error", error="No attached documents — AI model needs at least one file.")
-
-    files_for_api = []
-    for doc in docs:
-        full_path = os.path.join(
-            os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__)))), "instance", doc.blob_uri,
-        )
-        if os.path.isfile(full_path):
-            with open(full_path, "rb") as f:
-                files_for_api.append((doc.file_name, f.read(), doc.content_type))
-
+    files_for_api, skipped = load_ai_enquiry_files(db, case)
     if not files_for_api:
-        return BulkAiMatchResultItem(case_id=case_id, status="error", error="Attached documents could not be read from disk.")
+        return BulkAiMatchResultItem(
+            case_id=case_id,
+            status="error",
+            error="No enquiry documents to send to AI (price/quotation files are excluded).",
+        )
 
     email_msg = (
         db.query(EmailMessage).filter_by(case_id=case_id, direction="INBOUND")
         .order_by(EmailMessage.received_at.desc()).first()
     )
 
-    result = identify_product(
-        files=files_for_api,
-        email_text=email_msg.body_text if email_msg else "",
-        subject=email_msg.subject if email_msg else "",
-        from_email=email_msg.sender_email if email_msg else "",
+    try:
+        result = identify_product(
+            files=files_for_api,
+            email_text=email_msg.body_text if email_msg else "",
+            subject=email_msg.subject if email_msg else "",
+            from_email=email_msg.sender_email if email_msg else "",
+        )
+    except AiMatchError as exc:
+        return BulkAiMatchResultItem(case_id=case_id, status="error", error=exc.message)
+
+    identified, matched_count = _persist_ai_match(
+        db,
+        case,
+        result,
+        enquiry_title=(email_msg.subject if email_msg else None),
     )
-
-    if result is None:
-        return BulkAiMatchResultItem(case_id=case_id, status="error", error="Could not reach the AI matching service.")
-
-    decision = result.get("decision")
-    products = result.get("products", [])
-    matched_count = 0
-
-    if decision == "PRODUCTS_MATCHED" and products:
-        line_items = db.query(ExtractedLineItem).filter_by(case_id=case_id).all()
-        target_line_item = line_items[0] if line_items else None
-
-        if target_line_item is None:
-            target_line_item = ExtractedLineItem(
-                case_id=case_id, line_no=1,
-                description=result.get("search_query", "")[:500] or "AI-matched item",
-                qty=Decimal("1"), uom="NOS",
-            )
-            db.add(target_line_item)
-            db.flush()
-        else:
-            old_recs = db.query(ProductRecommendation).filter_by(line_item_id=target_line_item.line_item_id).all()
-            for old_rec in old_recs:
-                old_rec.is_selected_by_engineer = None
-
-        if case.status == "QUOTED":
-            old_status = case.status
-            case.status = "IN_REVIEW"
-            db.add(CaseStatusHistory(
-                case_id=case.case_id, from_status=old_status, to_status="IN_REVIEW",
-                changed_by="ai-rematch",
-            ))
-
-        for rank, family in enumerate(products[:5], start=1):
-            suggested_models = family.get("suggested_models") or []
-            if not suggested_models:
-                continue
-            top_model = suggested_models[0]
-            model_code = top_model.get("model_code")
-            if not model_code:
-                continue
-
-            confidence = family.get("confidence") or result.get("top_confidence") or 0.5
-            why_bits = family.get("why") or []
-            rationale = ", ".join(why_bits) if why_bits else "Matched by AI model."
-            if "?" in str(model_code):
-                missing = top_model.get("missing_segments") or []
-                rationale += (" — incomplete code, still need: " + ", ".join(missing)) if missing else " — incomplete code, needs clarification."
-
-            rec = ProductRecommendation(
-                case_id=case_id, line_item_id=target_line_item.line_item_id, rank_no=rank,
-                match_level="A" if rank == 1 else "B",
-                model_code=str(model_code)[:120],
-                confidence=Decimal(str(confidence)),
-                rationale=rationale[:1000],
-            )
-            db.add(rec)
-            matched_count += 1
-
     db.commit()
     return BulkAiMatchResultItem(case_id=case_id, status="done", items_matched=matched_count)
 
