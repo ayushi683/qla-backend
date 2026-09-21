@@ -9,7 +9,6 @@ import UsersManagement from "./pages/UsersManagement";
 import Dashboard from "./pages/Dashboard";
 import MasterHub from "./pages/master/MasterHub";
 import CatalogManagement from "./pages/master/CatalogManagement";
-import AdminSettings from "./pages/master/AdminSettings";
 
 function RequireAuth({ children }) {
   const { user } = useAuth();
@@ -56,11 +55,7 @@ function AppRoutes() {
       />
       <Route
         path="/users"
-        element={
-          <RequireAuth>
-            <Navigate to="/master/users" replace />
-          </RequireAuth>
-        }
+        element={<Navigate to="/master/users" replace />}
       />
       <Route
         path="/dashboard"
@@ -71,7 +66,7 @@ function AppRoutes() {
         }
       />
 
-      {/* MASTER SECTION ROUTES */}
+      {/* Master Section Routes */}
       <Route
         path="/master"
         element={
@@ -93,14 +88,6 @@ function AppRoutes() {
         element={
           <RequireAuth>
             <Layout><UsersManagement /></Layout>
-          </RequireAuth>
-        }
-      />
-      <Route
-        path="/master/settings"
-        element={
-          <RequireAuth>
-            <Layout><AdminSettings /></Layout>
           </RequireAuth>
         }
       />

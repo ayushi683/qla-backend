@@ -2,7 +2,6 @@ import { Link } from "react-router-dom";
 import {
   BookOpen,
   Users,
-  Sliders,
   ArrowRight,
   ShieldCheck,
   Package,
@@ -27,12 +26,12 @@ export default function MasterHub() {
             </span>
           </div>
           <p className="page-sub" style={{ marginTop: 4 }}>
-            Centralized management for engineering catalog models, team access permissions, and automated estimation engine rules.
+            Centralized management for engineering catalog models and team access permissions.
           </p>
         </div>
       </div>
 
-      {/* 3 Core Master Cards */}
+      {/* 2 Core Master Cards */}
       <div className="master-cards-grid">
         {/* 1. Catalog Master Card */}
         <div className="master-card">
@@ -82,7 +81,7 @@ export default function MasterHub() {
 
           <h3 className="master-card-title">User Management & Roles</h3>
           <p className="master-card-desc">
-            Configure application engineers and admin accounts. Assign business categories (OEM, CP, EPC, Projects), toggle active status, or manage credentials.
+            Configure application engineers and admin accounts. Assign business categories (Level, Flow, Pressure, Temperature), toggle active status, or manage credentials.
           </p>
 
           <div className="master-card-stats">
@@ -103,43 +102,6 @@ export default function MasterHub() {
           <div className="master-card-footer">
             <Link to="/master/users" className="btn btn-approve" style={{ width: "100%", justifyContent: "center" }}>
               <span>Manage Users & Categories</span>
-              <ArrowRight size={14} />
-            </Link>
-          </div>
-        </div>
-
-        {/* 3. System & Admin Settings Card */}
-        <div className="master-card">
-          <div className="master-card-top">
-            <div className="master-card-icon master-icon-settings">
-              <Sliders size={22} />
-            </div>
-            <span className="master-card-badge">Engine Rules</span>
-          </div>
-
-          <h3 className="master-card-title">System & Admin Settings</h3>
-          <p className="master-card-desc">
-            Tune AI matching confidence thresholds (Green/Amber), configure quotation GST rates, validity periods, and standard commercial terms.
-          </p>
-
-          <div className="master-card-stats">
-            <div className="master-stat-item">
-              <span className="master-stat-num">80%</span>
-              <span className="master-stat-label">High Threshold</span>
-            </div>
-            <div className="master-stat-item">
-              <span className="master-stat-num">18%</span>
-              <span className="master-stat-label">Standard GST</span>
-            </div>
-            <div className="master-stat-item">
-              <span className="master-stat-num">DOCX</span>
-              <span className="master-stat-label">Quote Engine</span>
-            </div>
-          </div>
-
-          <div className="master-card-footer">
-            <Link to="/master/settings" className="btn btn-approve" style={{ width: "100%", justifyContent: "center" }}>
-              <span>Configure Engine Rules</span>
               <ArrowRight size={14} />
             </Link>
           </div>

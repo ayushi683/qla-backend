@@ -57,7 +57,6 @@ export default function GenerateQuotationModal({ caseId, lines: initialLines, on
     setSaving(true);
     setError("");
     try {
-      // Save edits to existing (AI-matched) lines.
       for (const l of lines.filter((l) => !l.isCustomAdded)) {
         await api.updateQuotationLine(caseId, l.line_item_id, {
           model_code: l.model_code,
@@ -67,35 +66,17 @@ export default function GenerateQuotationModal({ caseId, lines: initialLines, on
         });
       }
 
-      // Create the manually-added lines for real, and swap their
-      // temporary client-side id for the real line_item_id so pricing
-      // can reference them correctly below.
-      const createdCustomLines = [];
-      for (const l of lines.filter((l) => l.isCustomAdded)) {
-        const created = await api.createQuotationLine(caseId, {
-          model_code: l.model_code,
-          description: l.description,
-          qty: l.qty,
-          uom: l.uom,
-          technical_spec_text: l.technical_spec_text,
-        });
-        createdCustomLines.push({ ...l, line_item_id: created.line_item_id });
-      }
-
-      const allLinesForPricing = [
-        ...lines.filter((l) => !l.isCustomAdded),
-        ...createdCustomLines,
-      ];
-
       await api.savePricing(caseId, {
         currency_code: "INR",
         discount_pct: discountPct || 0,
         tax_pct: taxPct || 0,
         freight_amount: freightAmount || 0,
-        lines: allLinesForPricing.map((l) => ({
-          quote_line_id: l.line_item_id,
-          unit_price: l._unitPrice || 0,
-        })),
+        lines: lines
+          .filter((l) => !l.isCustomAdded)
+          .map((l) => ({
+            quote_line_id: l.line_item_id,
+            unit_price: l._unitPrice || 0,
+          })),
       });
 
       const result = await api.generateQuotation(caseId);

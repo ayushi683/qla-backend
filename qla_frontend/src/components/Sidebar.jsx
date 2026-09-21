@@ -12,7 +12,6 @@ import {
   Menu,
   X,
   BookOpen,
-  Sliders,
   ShieldCheck,
   Package
 } from "lucide-react";
@@ -26,7 +25,6 @@ const MAIN_NAV_ITEMS = [
 const MASTER_NAV_ITEMS = [
   { to: "/master/catalog", label: "Product Catalog", Icon: BookOpen, adminOnly: true },
   { to: "/master/users", label: "Users & Roles", Icon: Users, adminOnly: true },
-  { to: "/master/settings", label: "Admin Settings", Icon: Sliders, adminOnly: true },
 ];
 
 export default function Sidebar() {

@@ -65,8 +65,6 @@ export const api = {
   generateQuotation: (caseId) => request(`/api/cases/${caseId}/quotation/generate`, { method: "POST" }),
   updateQuotationLine: (caseId, lineItemId, payload) =>
     request(`/api/cases/${caseId}/quotation/lines/${lineItemId}`, { method: "PATCH", body: payload }),
-  createQuotationLine: (caseId, payload) =>
-    request(`/api/cases/${caseId}/quotation/lines`, { method: "POST", body: payload }),
   caseRevisions: (caseId) => request(`/api/cases/${caseId}/revisions`),
   updateDraftEmail: (caseId, payload) =>
     request(`/api/cases/${caseId}/quotation/email`, { method: "PATCH", body: payload }),
