@@ -1,4 +1,4 @@
-import { useState, useEffect, useCallback } from "react";
+import { useState, useEffect, useCallback, useMemo } from "react";
 import { Link } from "react-router-dom";
 import { api } from "../api/client";
 import { useAuth } from "../context/AuthContext";
@@ -24,21 +24,31 @@ import {
   Building2,
   Tag,
   ChevronRight,
+  Award,
 } from "lucide-react";
 
-// Brand green harmonious palette
+// Cohesive, professional palette (tones of brand emerald and neutral slate)
 const CATEGORY_COLORS = [
-  "#16694a", // Primary brand emerald
-  "#0d4a33", // Dark brand forest
-  "#10b981", // Bright emerald
-  "#22c55e", // Fresh leaf green
-  "#14b8a6", // Teal green
-  "#84cc16", // Lime green
-  "#4d7c0f", // Olive green
+  "#16694a", // Pune Techtrol primary dark green
+  "#23865c", // Mid emerald
+  "#2f9e6d", // Forest green
+  "#48bb78", // Sage green
+  "#334155", // Slate dark
+  "#475569", // Slate medium
+  "#64748b", // Slate muted
 ];
 
-// Two-tone palette for the personal pipeline donut (Pending vs Quoted)
-const PIPELINE_COLORS = ["#84cc16", "#16694a"];
+// Two-tone palette for personal pipeline (Pending vs Quoted)
+const PIPELINE_COLORS = ["#64748b", "#16694a"];
+
+function getInitials(name) {
+  if (!name) return "EN";
+  const parts = name.trim().split(/\s+/);
+  if (parts.length >= 2) {
+    return (parts[0][0] + parts[parts.length - 1][0]).toUpperCase();
+  }
+  return name.slice(0, 2).toUpperCase();
+}
 
 function formatTimeAgo(iso) {
   if (!iso) return "Recent";
@@ -58,28 +68,34 @@ function DonutChart({ data, hoveredCategory, onHoverCategory, colors }) {
     return () => cancelAnimationFrame(t);
   }, []);
 
-  const total = data.reduce((sum, d) => sum + d.count, 0) || 1;
+  const total = data.reduce((sum, d) => sum + d.count, 0) || 0;
   const radius = 62;
   const circumference = 2 * Math.PI * radius;
   let offsetSoFar = 0;
 
+  const activeItem = data.find((d) => d.category === hoveredCategory);
+  const displayCount = activeItem ? activeItem.count : total;
+  const displayLabel = activeItem ? activeItem.category : "Total Enquiries";
+  const displayPct = activeItem && total > 0 ? `${((activeItem.count / total) * 100).toFixed(1)}%` : null;
+
   return (
     <div className="donut-container">
       <div className="donut-svg-wrap">
-        <svg viewBox="0 0 160 160" width="150" height="150">
+        <svg viewBox="0 0 160 160" width="160" height="160" className="donut-svg">
+          {/* Subtle background track */}
           <circle
             cx="80"
             cy="80"
             r={radius}
             fill="none"
-            stroke="var(--neutral-tint)"
-            strokeWidth="20"
+            stroke="rgba(0, 0, 0, 0.05)"
+            strokeWidth="18"
           />
           {data.map((d, i) => {
-            const pct = d.count / total;
+            const pct = total > 0 ? d.count / total : 0;
             const dash = pct * circumference;
             const gap = circumference - dash;
-            const rotation = (offsetSoFar / total) * 360 - 90;
+            const rotation = total > 0 ? (offsetSoFar / total) * 360 - 90 : -90;
             offsetSoFar += d.count;
             const isHovered = hoveredCategory === d.category;
             const palette = colors || CATEGORY_COLORS;
@@ -93,14 +109,14 @@ function DonutChart({ data, hoveredCategory, onHoverCategory, colors }) {
                 r={radius}
                 fill="none"
                 stroke={color}
-                strokeWidth={isHovered ? "24" : "20"}
-                strokeDasharray={`${animate ? dash : 0} ${animate ? gap : circumference}`}
+                strokeWidth={isHovered ? "22" : "18"}
+                strokeDasharray={`${animate ? dash : 0} ${gap}`}
                 strokeDashoffset="0"
                 transform={`rotate(${rotation} 80 80)`}
                 style={{
-                  transition: "stroke-dasharray 0.9s cubic-bezier(0.16, 1, 0.3, 1), stroke-width 0.2s ease",
+                  transition: "stroke-dasharray 0.9s cubic-bezier(0.16, 1, 0.3, 1), stroke-width 0.2s ease, filter 0.2s ease",
                   cursor: "pointer",
-                  filter: isHovered ? "drop-shadow(0 2px 6px rgba(0,0,0,0.15))" : "none",
+                  filter: isHovered ? "drop-shadow(0 4px 8px rgba(0,0,0,0.22))" : "none",
                 }}
                 onMouseEnter={() => onHoverCategory && onHoverCategory(d.category)}
                 onMouseLeave={() => onHoverCategory && onHoverCategory(null)}
@@ -109,8 +125,9 @@ function DonutChart({ data, hoveredCategory, onHoverCategory, colors }) {
           })}
         </svg>
         <div className="donut-hole-center">
-          <span className="donut-hole-count">{total}</span>
-          <span className="donut-hole-sub">Enquiries</span>
+          <span className="donut-hole-count">{displayCount}</span>
+          <span className="donut-hole-sub" title={displayLabel}>{displayLabel}</span>
+          {displayPct && <span className="donut-hole-pct">{displayPct}</span>}
         </div>
       </div>
 
@@ -119,24 +136,32 @@ function DonutChart({ data, hoveredCategory, onHoverCategory, colors }) {
           const isHovered = hoveredCategory === d.category;
           const palette = colors || CATEGORY_COLORS;
           const color = palette[i % palette.length];
-          const pct = ((d.count / total) * 100).toFixed(1);
+          const pct = total > 0 ? ((d.count / total) * 100).toFixed(1) : 0;
 
           return (
             <div
               key={d.category}
-              className="donut-legend-item"
-              style={{
-                background: isHovered ? "var(--brand-tint)" : "transparent",
-                fontWeight: isHovered ? 600 : 400,
-                cursor: "pointer",
-              }}
+              className={`donut-legend-item ${isHovered ? "is-hovered" : ""}`}
               onMouseEnter={() => onHoverCategory && onHoverCategory(d.category)}
               onMouseLeave={() => onHoverCategory && onHoverCategory(null)}
             >
               <span className="donut-color-pill" style={{ background: color }} />
-              <span className="donut-label-text">{d.category}</span>
-              <span className="donut-value-text">{d.count}</span>
-              <span className="donut-pct-text">{pct}%</span>
+              <div className="donut-legend-info">
+                <span className="donut-label-text">{d.category}</span>
+                <div className="donut-legend-bar-track">
+                  <div
+                    className="donut-legend-bar-fill"
+                    style={{
+                      width: `${pct}%`,
+                      background: color,
+                    }}
+                  />
+                </div>
+              </div>
+              <div className="donut-legend-stat">
+                <span className="donut-value-text">{d.count}</span>
+                <span className="donut-pct-text">{pct}%</span>
+              </div>
             </div>
           );
         })}
@@ -203,8 +228,8 @@ export default function Dashboard() {
 
   if (loading) {
     return (
-      <div className="page">
-        <div style={{ display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "center", minHeight: "340px", gap: 14 }}>
+      <div className="page dashboard-page">
+        <div style={{ display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "center", minHeight: "380px", gap: 14 }}>
           <RefreshCw className="spin-icon" size={32} style={{ color: "var(--brand)", animation: "spin 1s linear infinite" }} />
           <div style={{ fontSize: "0.95rem", color: "var(--muted)", fontWeight: 500 }}>Loading live dashboard analytics…</div>
         </div>
@@ -214,7 +239,7 @@ export default function Dashboard() {
 
   if (error && !insights) {
     return (
-      <div className="page">
+      <div className="page dashboard-page">
         <div className="flash flash-error">
           <AlertTriangle size={18} />
           <span>{error}</span>
@@ -241,27 +266,35 @@ export default function Dashboard() {
   return (
     <div className="page dashboard-page">
       {/* 1. Header with Live Status Banner */}
-      <div className="dashboard-header">
+      <div className="dashboard-header-card">
         <div className="dashboard-header-left">
-          <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
-            <h1 className="page-title" style={{ margin: 0 }}>
+          <div className="dashboard-org-tag">
+            <Building2 size={13} />
+            <span>PUNE TECHTROL · OPERATIONS INTELLIGENCE</span>
+          </div>
+          <div className="dashboard-title-row">
+            <h1 className="dashboard-hero-title">
               {user?.role === "ADMIN" ? "Executive Dashboard" : "My Dashboard"}
             </h1>
             <span className="dashboard-status-pill">
-              <span className="dashboard-status-dot" />
-              Live System
+              <span className="dashboard-status-pulse" />
+              Live Telemetry
             </span>
           </div>
-          <p className="page-sub">
+          <p className="dashboard-hero-sub">
             {user?.role === "ADMIN"
               ? "Real-time analytics, review queue status, and quotation tracking for Pune Techtrol."
               : `Here's what's on your plate and how you're doing — ${user?.category || "your category"}.`}
           </p>
         </div>
 
-        <div className="dashboard-actions">
+        <div className="dashboard-header-actions">
+          <div className="dashboard-sync-indicator">
+            <Clock size={12} />
+            <span>Live Updates</span>
+          </div>
           <button
-            className="dashboard-btn-refresh"
+            className="dashboard-btn-refresh-modern"
             onClick={() => loadData(true)}
             disabled={refreshing}
             title="Refresh dashboard metrics"
@@ -271,7 +304,7 @@ export default function Dashboard() {
               className={refreshing ? "spin-icon" : ""}
               style={refreshing ? { animation: "spin 0.8s linear infinite" } : {}}
             />
-            {refreshing ? "Updating…" : "Refresh"}
+            <span>{refreshing ? "Updating…" : "Refresh"}</span>
           </button>
         </div>
       </div>
@@ -280,26 +313,29 @@ export default function Dashboard() {
 
       {/* 2. Top Metric KPI Cards */}
       <div className="stat-cards">
+        {/* Card 1: Incoming Enquiries */}
         <div className="stat-card">
-          <div className="stat-card-top">
+          <div className="stat-card-header">
             <span className="stat-label">Incoming Enquiries</span>
-            <div className="stat-icon-wrap" style={{ background: "var(--brand-tint)", color: "var(--brand)" }}>
+            <div className="stat-icon-wrap">
               <Inbox size={18} />
             </div>
           </div>
-          <div>
-            <div className="stat-value">{incomingToday}</div>
-            <div className="stat-sub">
-              <TrendingUp size={13} style={{ color: "var(--brand)" }} />
-              <span>Today</span>
-              <span style={{ color: "var(--border)" }}>•</span>
-              <b>{incomingTotal}</b> all-time
+          <div className="stat-card-body">
+            <div className="stat-value-group">
+              <span className="stat-value">{incomingToday}</span>
+              <span className="stat-sub-unit">enquiries</span>
+            </div>
+            <div className="stat-meta-row">
+              <span className="stat-meta-highlight">+{incomingToday} today</span>
+              <span className="stat-bullet">•</span>
+              <span className="stat-text-muted">{incomingTotal} total</span>
             </div>
             <div className="stat-progress">
               <div
                 className="stat-progress-bar"
                 style={{
-                  background: "var(--brand)",
+                  background: "#16694a",
                   width: `${Math.min((incomingToday / Math.max(incomingTotal, 1)) * 100, 100)}%`,
                 }}
               />
@@ -307,26 +343,29 @@ export default function Dashboard() {
           </div>
         </div>
 
+        {/* Card 2: Quotations Generated */}
         <div className="stat-card">
-          <div className="stat-card-top">
+          <div className="stat-card-header">
             <span className="stat-label">Quotations Generated</span>
-            <div className="stat-icon-wrap" style={{ background: "rgba(16, 185, 129, 0.12)", color: "#059669" }}>
+            <div className="stat-icon-wrap">
               <Send size={18} />
             </div>
           </div>
-          <div>
-            <div className="stat-value">{quotationsToday}</div>
-            <div className="stat-sub">
-              <CheckCircle2 size={13} style={{ color: "#059669" }} />
-              <span>Sent today</span>
-              <span style={{ color: "var(--border)" }}>•</span>
-              <b>{quotationsTotal}</b> total
+          <div className="stat-card-body">
+            <div className="stat-value-group">
+              <span className="stat-value">{quotationsToday}</span>
+              <span className="stat-sub-unit">generated</span>
+            </div>
+            <div className="stat-meta-row">
+              <span className="stat-meta-highlight">+{quotationsToday} today</span>
+              <span className="stat-bullet">•</span>
+              <span className="stat-meta-rate">{quotationRate}% Quoted</span>
             </div>
             <div className="stat-progress">
               <div
                 className="stat-progress-bar"
                 style={{
-                  background: "#10b981",
+                  background: "#16694a",
                   width: `${Math.min((quotationsTotal / Math.max(incomingTotal, 1)) * 100, 100)}%`,
                 }}
               />
@@ -334,63 +373,72 @@ export default function Dashboard() {
           </div>
         </div>
 
+        {/* Card 3: Pending Decisions */}
         <div className="stat-card">
-          <div className="stat-card-top">
-            <span className="stat-label">Pending Decision</span>
-            <div className="stat-icon-wrap" style={{ background: "#d1fae5", color: "#059669" }}>
+          <div className="stat-card-header">
+            <span className="stat-label">Pending Review</span>
+            <div className="stat-icon-wrap">
               <Clock size={18} />
             </div>
           </div>
-          <div>
-            <div className="stat-value" style={{ color: underReview > 0 ? "#4d7c0f" : "var(--ink)" }}>
-              {underReview}
+          <div className="stat-card-body">
+            <div className="stat-value-group">
+              <span className="stat-value" style={{ color: underReview > 0 ? "#b45309" : "var(--ink)" }}>
+                {underReview}
+              </span>
+              <span className="stat-sub-unit">awaiting review</span>
             </div>
-            <div className="stat-sub">
-              <span>Items waiting in review queue</span>
+            <div className="stat-meta-row" style={{ justifyContent: "space-between" }}>
+              <span className="stat-text-muted">Awaiting decision</span>
+              <Link to="/" className="stat-link-action">
+                Review Queue <ArrowRight size={12} />
+              </Link>
             </div>
             <div className="stat-progress">
               <div
                 className="stat-progress-bar"
                 style={{
-                  background: "#059669",
-                  width: underReview > 0 ? "65%" : "0%",
+                  background: underReview > 0 ? "#d97706" : "#cbd5e1",
+                  width: underReview > 0 ? "70%" : "0%",
                 }}
               />
             </div>
           </div>
         </div>
 
+        {/* Card 4: AI Match Precision */}
         <div
           className="stat-card stat-card-clickable"
           onClick={() => setShowRejectionDetail((v) => !v)}
-          title="Click to view rejection details"
+          title="Click to view precision details"
         >
-          <div className="stat-card-top">
-            <span className="stat-label">AI Rejection Rate</span>
-            <div
-              className="stat-icon-wrap"
-              style={{
-                background: rejectionRate > 20 ? "var(--danger-tint)" : "var(--brand-tint)",
-                color: rejectionRate > 20 ? "var(--danger)" : "var(--brand)",
-              }}
-            >
-              {rejectionRate > 20 ? <AlertTriangle size={18} /> : <Target size={18} />}
+          <div className="stat-card-header">
+            <span className="stat-label">AI Match Precision</span>
+            <div className="stat-icon-wrap">
+              <Target size={18} />
             </div>
           </div>
-          <div>
-            <div className="stat-value">{rejectionRate}%</div>
-            <div className="stat-sub">
-              <span>{rejectionRate <= 15 ? "High match accuracy" : "Requires attention"}</span>
-              <span style={{ marginLeft: "auto", fontSize: "0.72rem", color: "var(--brand)" }}>
-                Details ▾
+          <div className="stat-card-body">
+            <div className="stat-value-group">
+              <span className="stat-value" style={{ color: rejectionRate > 20 ? "var(--danger)" : "var(--ink)" }}>
+                {rejectionRate > 0 ? (100 - rejectionRate).toFixed(1) : 100}%
+              </span>
+              <span className="stat-sub-unit">precision</span>
+            </div>
+            <div className="stat-meta-row">
+              <span className="stat-text-muted">
+                {rejectionRate <= 15 ? "High Precision" : "Needs Attention"}
+              </span>
+              <span className="stat-details-trigger">
+                Breakdown ▾
               </span>
             </div>
             <div className="stat-progress">
               <div
                 className="stat-progress-bar"
                 style={{
-                  background: rejectionRate > 20 ? "var(--danger)" : "var(--brand)",
-                  width: `${Math.min(rejectionRate, 100)}%`,
+                  background: rejectionRate > 20 ? "var(--danger)" : "#16694a",
+                  width: `${Math.min(100 - rejectionRate, 100)}%`,
                 }}
               />
             </div>
@@ -408,17 +456,17 @@ export default function Dashboard() {
               <div className="rejection-popover-body">
                 <div className="rejection-row">
                   <span style={{ display: "flex", alignItems: "center", gap: 6 }}>
-                    <XCircle size={14} style={{ color: "var(--danger)" }} />
-                    Rejection Rate
-                  </span>
-                  <b>{rejectionRate}%</b>
-                </div>
-                <div className="rejection-row">
-                  <span style={{ display: "flex", alignItems: "center", gap: 6 }}>
                     <CheckCircle2 size={14} style={{ color: "var(--brand)" }} />
                     Acceptance Rate
                   </span>
                   <b>{(100 - rejectionRate).toFixed(1)}%</b>
+                </div>
+                <div className="rejection-row">
+                  <span style={{ display: "flex", alignItems: "center", gap: 6 }}>
+                    <XCircle size={14} style={{ color: "var(--danger)" }} />
+                    Rejection Rate
+                  </span>
+                  <b>{rejectionRate}%</b>
                 </div>
                 <div className="rejection-row">
                   <span>Pending Decisions</span>
@@ -440,14 +488,18 @@ export default function Dashboard() {
         <div className="dashboard-grid" style={{ marginBottom: 24 }}>
           <div className="dashboard-card">
             <div className="dashboard-card-head">
-              <h2 className="dashboard-card-title">
-                <PieChart size={18} style={{ color: "var(--brand)" }} />
-                My Pipeline — {user?.category || "My Category"}
-              </h2>
+              <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
+                <div className="dashboard-card-icon-wrap">
+                  <PieChart size={18} />
+                </div>
+                <h2 className="dashboard-card-title">
+                  My Pipeline — {user?.category || "My Category"}
+                </h2>
+              </div>
             </div>
             {(insights?.pipeline_breakdown || []).every((d) => d.count === 0) ? (
-              <div style={{ padding: "30px 0", textAlign: "center", color: "var(--muted)", fontSize: "0.88rem" }}>
-                No enquiries yet.
+              <div style={{ padding: "40px 0", textAlign: "center", color: "var(--muted)", fontSize: "0.88rem" }}>
+                No enquiries recorded yet.
               </div>
             ) : (
               <DonutChart
@@ -461,16 +513,20 @@ export default function Dashboard() {
 
           <div className="dashboard-card">
             <div className="dashboard-card-head">
-              <h2 className="dashboard-card-title">
-                <Activity size={18} style={{ color: "var(--brand)" }} />
-                My Recent Activity
-              </h2>
+              <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
+                <div className="dashboard-card-icon-wrap">
+                  <Activity size={18} />
+                </div>
+                <h2 className="dashboard-card-title">
+                  My Recent Activity
+                </h2>
+              </div>
               <Link to="/cases" className="dashboard-card-action">
                 View all <ArrowRight size={14} />
               </Link>
             </div>
             {recentCases.length === 0 ? (
-              <div style={{ padding: "30px 0", textAlign: "center", color: "var(--muted)", fontSize: "0.88rem" }}>
+              <div style={{ padding: "40px 0", textAlign: "center", color: "var(--muted)", fontSize: "0.88rem" }}>
                 No recent enquiries in your category.
               </div>
             ) : (
@@ -483,7 +539,7 @@ export default function Dashboard() {
                         <span className="urgent-item-sub">{c.internal_ref} · {c.status}</span>
                       </div>
                     </div>
-                    <Link to={`/cases/${c.case_id}`} className="btn btn-sm btn-outline" style={{ padding: "4px 10px", fontSize: "0.78rem" }}>
+                    <Link to={`/cases/${c.case_id}`} className="btn btn-sm btn-outline" style={{ padding: "4px 12px", fontSize: "0.78rem" }}>
                       Open →
                     </Link>
                   </div>
@@ -499,17 +555,22 @@ export default function Dashboard() {
         <div className="dashboard-grid" style={{ marginBottom: 24 }}>
           <div className="dashboard-card">
             <div className="dashboard-card-head">
-              <h2 className="dashboard-card-title">
-                <PieChart size={18} style={{ color: "var(--brand)" }} />
-                Enquiries by Category
-              </h2>
+              <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
+                <div className="dashboard-card-icon-wrap">
+                  <PieChart size={18} />
+                </div>
+                <div>
+                  <h2 className="dashboard-card-title">Enquiries by Category</h2>
+                  <span className="dashboard-card-subtitle">Distribution across engineering product lines</span>
+                </div>
+              </div>
               <Link to="/cases" className="dashboard-card-action">
                 All Cases <ArrowRight size={14} />
               </Link>
             </div>
 
             {categories.length === 0 ? (
-              <div style={{ padding: "30px 0", textAlign: "center", color: "var(--muted)", fontSize: "0.88rem" }}>
+              <div style={{ padding: "40px 0", textAlign: "center", color: "var(--muted)", fontSize: "0.88rem" }}>
                 No categories assigned yet.
               </div>
             ) : (
@@ -523,15 +584,20 @@ export default function Dashboard() {
 
           <div className="dashboard-card">
             <div className="dashboard-card-head">
-              <h2 className="dashboard-card-title">
-                <BarChart3 size={18} style={{ color: "var(--brand)" }} />
-                Engineer Activity & Approvals
-              </h2>
-              <span className="stat-badge">{engineers.length} Active Engineers</span>
+              <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
+                <div className="dashboard-card-icon-wrap">
+                  <BarChart3 size={18} />
+                </div>
+                <div>
+                  <h2 className="dashboard-card-title">Engineer Activity & Performance</h2>
+                  <span className="dashboard-card-subtitle">Team review decisions & acceptance ratio</span>
+                </div>
+              </div>
+              <span className="stat-badge">{engineers.length} Reviewers</span>
             </div>
 
             {engineers.length === 0 ? (
-              <div style={{ padding: "30px 0", textAlign: "center", color: "var(--muted)", fontSize: "0.88rem" }}>
+              <div style={{ padding: "40px 0", textAlign: "center", color: "var(--muted)", fontSize: "0.88rem" }}>
                 No decisions recorded yet. Decisions made in the Review Queue will appear here.
               </div>
             ) : (
@@ -544,28 +610,53 @@ export default function Dashboard() {
 
                   return (
                     <div key={row.engineer} className="engineer-item">
-                      <div className="engineer-meta">
-                        <span className="engineer-name">
-                          {idx === 0 && <span title="Top Reviewer">⭐</span>}
-                          {row.engineer}
-                        </span>
-                        <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
-                          <span className="engineer-badge">{approvedPct}% Approved</span>
-                          <span className="engineer-counts">
-                            {row.approved} approved · {row.rejected} rejected
-                          </span>
+                      <div className="engineer-top-row">
+                        <div className="engineer-left-col">
+                          <div className="engineer-avatar">
+                            {getInitials(row.engineer)}
+                          </div>
+                          <div className="engineer-details">
+                            <div className="engineer-name-row">
+                              <span className="engineer-name">{row.engineer}</span>
+                              {idx === 0 && (
+                                <span className="top-reviewer-pill">
+                                  Top Reviewer
+                                </span>
+                              )}
+                            </div>
+                            <span className="engineer-sub-meta">
+                              {total} total evaluation{total === 1 ? "" : "s"}
+                            </span>
+                          </div>
+                        </div>
+
+                        <div className="engineer-right-col">
+                          <div className="engineer-metric-badge">
+                            <span className="engineer-badge-pct">{approvedPct}%</span>
+                            <span className="engineer-badge-label">Approved</span>
+                          </div>
+                          <div className="engineer-counts-row">
+                            <span className="count-approved">
+                              <CheckCircle2 size={12} /> {row.approved}
+                            </span>
+                            <span className="count-sep">/</span>
+                            <span className="count-rejected">
+                              <XCircle size={12} /> {row.rejected}
+                            </span>
+                          </div>
                         </div>
                       </div>
+
                       <div className="engineer-bar-wrapper">
                         <div
                           className="engineer-fill-approved"
                           style={{ width: barsAnimate ? `${approvedWidth}%` : "0%" }}
-                          title={`${row.approved} Approved`}
+                          title={`${row.approved} Approved (${approvedPct}%)`}
                         />
                         <div
                           className="engineer-fill-rejected"
                           style={{ width: barsAnimate ? `${rejectedWidth}%` : "0%" }}
-                          title={`${row.rejected} Rejected`}
+                          title={`${row.rejected} Rejected (${100 - approvedPct}%)`}
                         />
                       </div>
                     </div>
@@ -576,144 +667,6 @@ export default function Dashboard() {
           </div>
         </div>
       )}
-
-      {/* 4. Bottom Grid: Pipeline Funnel + Urgent Attention Items */}
-      <div className="dashboard-grid">
-        <div className="dashboard-card">
-          <div className="dashboard-card-head">
-            <h2 className="dashboard-card-title">
-              <AlertTriangle size={18} style={{ color: "#4d7c0f" }} />
-              Items Requiring Immediate Review
-            </h2>
-            <Link to="/" className="dashboard-card-action">
-              Go to Review Queue <ArrowRight size={13} />
-            </Link>
-          </div>
-
-          <p style={{ fontSize: "0.82rem", color: "var(--muted)", margin: "0 0 14px" }}>
-            The following enquiries have pending engineer decisions or rejected AI matches waiting to be resolved:
-          </p>
-
-          <div className="urgent-items-list">
-            {recentCases
-              .filter((c) => c.has_pending || c.has_rejected || c.status === "UNDER_REVIEW")
-              .slice(0, 3)
-              .map((c) => (
-                <div key={c.case_id} className="urgent-item-row">
-                  <div className="urgent-item-left">
-                    <span
-                      className="urgent-item-badge"
-                      style={{
-                        background: c.has_rejected ? "var(--danger-tint)" : "#ecfccb",
-                        color: c.has_rejected ? "var(--danger)" : "#4d7c0f",
-                      }}
-                    >
-                      {c.has_rejected ? "Rejected Match" : "Review Needed"}
-                    </span>
-                    <div className="urgent-item-info">
-                      <span className="urgent-item-title">{c.customer_name || "Customer Inquiry"}</span>
-                      <span className="urgent-item-sub">
-                        {c.internal_ref} · {c.category || "General"}
-                      </span>
-                    </div>
-                  </div>
-
-                  <Link
-                    to={`/cases/${c.case_id}`}
-                    className="btn btn-sm btn-outline"
-                    style={{ padding: "4px 10px", fontSize: "0.78rem", whiteSpace: "nowrap" }}
-                  >
-                    Resolve →
-                  </Link>
-                </div>
-              ))}
-
-            {recentCases.filter((c) => c.has_pending || c.has_rejected || c.status === "UNDER_REVIEW").length === 0 && (
-              <div
-                style={{
-                  padding: "16px",
-                  textAlign: "center",
-                  fontSize: "0.82rem",
-                  color: "var(--brand)",
-                  background: "var(--brand-tint)",
-                  borderRadius: "8px",
-                }}
-              >
-                ✓ All received items have been reviewed! No blocked inquiries.
-              </div>
-            )}
-          </div>
-        </div>
-
-        <div className="dashboard-card">
-          <div className="dashboard-card-head">
-            <h2 className="dashboard-card-title">
-              <Zap size={18} style={{ color: "var(--brand)" }} />
-              Quick Workspace Actions
-            </h2>
-          </div>
-
-          <div className="quick-action-grid">
-            <Link to="/" className="quick-action-tile">
-              <div className="quick-action-icon">
-                <CheckSquare size={20} />
-              </div>
-              <div>
-                <div className="quick-action-title">Review Queue</div>
-                <div className="quick-action-desc">Verify AI model matches & line items</div>
-              </div>
-            </Link>
-
-            <Link to="/cases" className="quick-action-tile">
-              <div className="quick-action-icon">
-                <FileText size={20} />
-              </div>
-              <div>
-                <div className="quick-action-title">All Cases & Inquiries</div>
-                <div className="quick-action-desc">Search, filter, and inspect quotations</div>
-              </div>
-            </Link>
-
-            {user?.role === "ADMIN" && (
-              <Link to="/users" className="quick-action-tile">
-                <div className="quick-action-icon">
-                  <Users size={20} />
-                </div>
-                <div>
-                  <div className="quick-action-title">Engineer Assignments</div>
-                  <div className="quick-action-desc">Manage categories and user permissions</div>
-                </div>
-              </Link>
-            )}
-
-            <Link to="/cases" className="quick-action-tile">
-              <div className="quick-action-icon">
-                <Send size={20} />
-              </div>
-              <div>
-                <div className="quick-action-title">Generate Quotations</div>
-                <div className="quick-action-desc">Build docx and dispatch draft emails</div>
-              </div>
-            </Link>
-          </div>
-
-          <div
-            style={{
-              marginTop: "auto",
-              paddingTop: 18,
-              display: "flex",
-              alignItems: "center",
-              justifyContent: "space-between",
-              fontSize: "0.82rem",
-              color: "var(--muted)",
-              borderTop: "1px solid var(--border)",
-            }}
-          >
-            <span>Quotation Conversion Pipeline</span>
-            <b style={{ color: "var(--brand)", fontSize: "0.95rem" }}>{quotationRate}% quoted</b>
-          </div>
-        </div>
-      </div>
     </div>
   );
 }

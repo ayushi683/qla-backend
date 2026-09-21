@@ -1,4 +1,5 @@
 import { useState, useEffect, useRef } from "react";
+import { MoreVertical, Shield, UserX, UserCheck, Trash2 } from "lucide-react";
 import { api } from "../api/client";
 
 export default function UsersManagement() {
@@ -8,6 +9,7 @@ export default function UsersManagement() {
   const [newEmail, setNewEmail] = useState("");
   const [newName, setNewName] = useState("");
   const [newRole, setNewRole] = useState("ENGINEER");
+  const [newCategory, setNewCategory] = useState("");
   const [busy, setBusy] = useState(false);
   const [openMenuId, setOpenMenuId] = useState(null);
   const menuRef = useRef(null);
@@ -38,8 +40,13 @@ export default function UsersManagement() {
     setBusy(true);
     setError("");
     try {
-      await api.createUser({ email: newEmail, display_name: newName, role: newRole });
-      setNewEmail(""); setNewName(""); setNewRole("ENGINEER");
+      await api.createUser({
+        email: newEmail,
+        display_name: newName,
+        role: newRole,
+        category: newCategory.trim() || undefined,
+      });
+      setNewEmail(""); setNewName(""); setNewRole("ENGINEER"); setNewCategory("");
       setShowAdd(false);
       load();
     } catch (e) {
@@ -67,6 +74,27 @@ export default function UsersManagement() {
       setError(e.message || "Failed to update user");
     }
     setOpenMenuId(null);
+  }
+
+  async function handleDelete(user) {
+    if (!window.confirm(`Are you sure you want to delete user "${user.display_name}" (${user.email})?`)) {
+      return;
+    }
+    setBusy(true);
+    setError("");
+    try {
+      await api.deleteUser(user.user_id);
+      load();
+    } catch (e) {
+      if (e.message && (e.message.includes("405") || e.message.includes("Not Allowed"))) {
+        setError("Delete endpoint (DELETE /api/users/{id}) is pending on the backend. You can use 'Disable User' to revoke access in the meantime.");
+      } else {
+        setError(e.message || "Failed to delete user");
+      }
+    } finally {
+      setBusy(false);
+      setOpenMenuId(null);
+    }
   }
 
   return (
@@ -100,6 +128,24 @@ export default function UsersManagement() {
                 <option value="ENGINEER">Engineer</option>
                 <option value="ADMIN">Admin</option>
               </select>
+            </div>
+            <div>
+              <label>Category</label>
+              <input
+                type="text"
+                list="category-suggestions"
+                placeholder="e.g. OEM,MRO or CP"
+                value={newCategory}
+                onChange={(e) => setNewCategory(e.target.value)}
+              />
+              <datalist id="category-suggestions">
+                <option value="OEM,MRO" />
+                <option value="CP" />
+                <option value="EPC,EXPORT" />
+                <option value="PROJECT" />
+                <option value="DISTRIBUTED_PRODUCTS" />
+                <option value="ULTRASONIC" />
+              </datalist>
             </div>
           </div>
           <button type="submit" className="btn btn-save" disabled={busy}>
@@ -139,21 +185,38 @@ export default function UsersManagement() {
                 </td>
                 <td style={{ position: "relative" }}>
                   <button
+                    type="button"
                     className="action-menu-trigger"
                     onClick={() => setOpenMenuId(openMenuId === u.user_id ? null : u.user_id)}
+                    title="User actions"
                   >
-                    ⋮
+                    <MoreVertical size={16} />
                   </button>
                   {openMenuId === u.user_id && (
                     <div className="action-menu" ref={menuRef}>
-                      <button className="action-menu-item" onClick={() => handleRoleChange(u, u.role === "ADMIN" ? "ENGINEER" : "ADMIN")}>
-                        Change Role → {u.role === "ADMIN" ? "Engineer" : "Admin"}
+                      <button
+                        type="button"
+                        className="action-menu-item"
+                        onClick={() => handleRoleChange(u, u.role === "ADMIN" ? "ENGINEER" : "ADMIN")}
+                      >
+                        <Shield size={14} className="action-menu-icon" />
+                        <span>Change Role → {u.role === "ADMIN" ? "Engineer" : "Admin"}</span>
                       </button>
                       <button
-                        className={`action-menu-item ${u.is_enabled ? "action-menu-danger" : ""}`}
+                        type="button"
+                        className={`action-menu-item ${u.is_enabled ? "action-menu-warning" : "action-menu-success"}`}
                         onClick={() => handleToggleEnabled(u)}
                       >
-                        {u.is_enabled ? "Disable User" : "Enable User"}
+                        {u.is_enabled ? <UserX size={14} className="action-menu-icon" /> : <UserCheck size={14} className="action-menu-icon" />}
+                        <span>{u.is_enabled ? "Disable User" : "Enable User"}</span>
+                      </button>
+                      <button
+                        type="button"
+                        className="action-menu-item action-menu-danger"
+                        onClick={() => handleDelete(u)}
+                      >
+                        <Trash2 size={14} className="action-menu-icon" />
+                        <span>Delete User</span>
                       </button>
                     </div>
                   )}

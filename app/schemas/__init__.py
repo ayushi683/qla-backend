@@ -57,11 +57,13 @@ class LineItemOut(BaseModel):
     moc: Optional[str] = None
     recommendations: List[RecommendationOut] = []
 
+
 class StatusHistoryEntry(BaseModel):
     model_config = _CONFIG
     from_status: Optional[str] = None
     to_status: str
     changed_at: datetime
+
 
 class CaseOut(BaseModel):
     model_config = _CONFIG
@@ -76,6 +78,7 @@ class CaseOut(BaseModel):
     status_history: list[StatusHistoryEntry] = []
     revision_no: int = 0
     revision_count: int = 1
+
 
 class QuotationLineOut(BaseModel):
     model_config = _CONFIG
@@ -164,6 +167,7 @@ class EditRecommendationRequest(BaseModel):
     model_code: Optional[str] = None
     rationale: Optional[str] = None
 
+
 class CaseSummaryOut(BaseModel):
     model_config = _CONFIG
     case_id: int
@@ -181,6 +185,7 @@ class CaseSummaryOut(BaseModel):
     revision_no: int = 0
     revision_count: int = 1
 
+
 class EnquiryEmailOut(BaseModel):
     model_config = _CONFIG
     subject: Optional[str] = None
@@ -188,15 +193,18 @@ class EnquiryEmailOut(BaseModel):
     body_text: Optional[str] = None
     received_at: Optional[datetime] = None
 
+
 class UserCreateRequest(BaseModel):
     email: str
     display_name: str
-    role: str = "ENGINEER"
+    role: str
+    category: Optional[str] = None
 
 
 class UserUpdateRequest(BaseModel):
     role: Optional[str] = None
     is_enabled: Optional[bool] = None
+    category: Optional[str] = None
 
 
 class UserListOut(BaseModel):
@@ -209,9 +217,11 @@ class UserListOut(BaseModel):
     last_login_at: Optional[datetime] = None
     category: Optional[str] = None
 
+
 class EmailUpdateRequest(BaseModel):
     subject: Optional[str] = None
     body_text: Optional[str] = None
+
 
 class RevisionSummary(BaseModel):
     model_config = _CONFIG
@@ -221,11 +231,22 @@ class RevisionSummary(BaseModel):
     status: str
     enq_received_at: Optional[datetime] = None
 
+
 class QtnGroupOut(BaseModel):
     qtnno: Optional[str] = None
     fyear: Optional[str] = None
     revisions: list[RevisionSummary] = []
     documents: list[DocumentOut] = []
+
+
+class QuotationLineCreateRequest(BaseModel):
+    model_code: Optional[str] = None
+    description: Optional[str] = None
+    qty: Optional[str] = None
+    uom: Optional[str] = None
+    technical_spec_text: Optional[str] = None
+    unit_price: Optional[Decimal] = None
+
 
 class QuotationLineUpdateRequest(BaseModel):
     model_code: Optional[str] = None
@@ -233,43 +254,6 @@ class QuotationLineUpdateRequest(BaseModel):
     qty: Optional[str] = None
     technical_spec_text: Optional[str] = None
 
-class PricingLineInput(BaseModel):
-    quote_line_id: int
-    unit_price: Optional[Decimal] = None
-    discount_pct: Optional[Decimal] = None
-
-
-class PricingUpdateRequest(BaseModel):
-    currency_code: str = "INR"
-    discount_pct: Optional[Decimal] = None
-    tax_pct: Optional[Decimal] = None
-    freight_amount: Optional[Decimal] = None
-    validity_days: Optional[int] = None
-    notes: Optional[str] = None
-    lines: list[PricingLineInput] = []
-
-
-class PricingLineOut(BaseModel):
-    model_config = _CONFIG
-    pricing_line_id: int
-    quote_line_id: Optional[int] = None
-    unit_price: Optional[Decimal] = None
-    line_total: Optional[Decimal] = None
-    discount_pct: Optional[Decimal] = None
-
-
-class PricingSnapshotOut(BaseModel):
-    model_config = _CONFIG
-    pricing_id: int
-    currency_code: str
-    discount_pct: Optional[Decimal] = None
-    tax_pct: Optional[Decimal] = None
-    freight_amount: Optional[Decimal] = None
-    grand_total: Optional[Decimal] = None
-    validity_days: Optional[int] = None
-    notes: Optional[str] = None
-    entered_by: str
-    lines: list[PricingLineOut] = []
 
 class PricingLineInput(BaseModel):
     quote_line_id: int
@@ -308,6 +292,7 @@ class PricingSnapshotOut(BaseModel):
     notes: Optional[str] = None
     entered_by: str
     lines: list[PricingLineOut] = []
+
 
 class CommunicationEntry(BaseModel):
     entry_type: str  # "ENQUIRY_RECEIVED" | "QUOTATION_SENT" | "QUOTATION_DRAFTED"
@@ -318,6 +303,7 @@ class CommunicationEntry(BaseModel):
     body_text: Optional[str] = None
     timestamp: Optional[datetime] = None
     is_current_revision: bool = True
+
 
 class BulkAiMatchRequest(BaseModel):
     case_ids: list[int]

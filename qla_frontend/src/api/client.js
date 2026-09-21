@@ -52,6 +52,7 @@ export const api = {
   listUsers: () => request("/api/users"),
   createUser: (payload) => request("/api/users", { method: "POST", body: payload }),
   updateUser: (userId, payload) => request(`/api/users/${userId}`, { method: "PATCH", body: payload }),
+  deleteUser: (userId) => request(`/api/users/${userId}`, { method: "DELETE" }),
 
   approve: (recId) => request(`/api/recommendations/${recId}/approve`, { method: "POST" }),
   reject: (recId) => request(`/api/recommendations/${recId}/reject`, { method: "POST" }),
@@ -64,6 +65,8 @@ export const api = {
   generateQuotation: (caseId) => request(`/api/cases/${caseId}/quotation/generate`, { method: "POST" }),
   updateQuotationLine: (caseId, lineItemId, payload) =>
     request(`/api/cases/${caseId}/quotation/lines/${lineItemId}`, { method: "PATCH", body: payload }),
+  createQuotationLine: (caseId, payload) =>
+    request(`/api/cases/${caseId}/quotation/lines`, { method: "POST", body: payload }),
   caseRevisions: (caseId) => request(`/api/cases/${caseId}/revisions`),
   updateDraftEmail: (caseId, payload) =>
     request(`/api/cases/${caseId}/quotation/email`, { method: "PATCH", body: payload }),

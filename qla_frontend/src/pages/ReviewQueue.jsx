@@ -1,6 +1,23 @@
 import { useState, useMemo, useRef, useEffect } from "react";
+import {
+  Search,
+  ChevronDown,
+  Calendar,
+  Check,
+  RotateCcw,
+  Layers,
+  Clock,
+  AlertTriangle,
+  ArrowUpRight,
+  CheckCircle2,
+  RefreshCw,
+  X,
+  Inbox,
+  Building2
+} from "lucide-react";
 import { api } from "../api/client";
 import { usePolling } from "../api/usePolling";
+import { formatDate } from "../utils/dateFormat";
 import CaseReviewModal from "../components/CaseReviewModal";
 
 const CATEGORY_OPTIONS = ["OEM", "MRO", "CP", "EPC", "EXPORT", "DISTRIBUTED_PRODUCTS", "PROJECT", "ULTRASONIC"];
@@ -23,6 +40,7 @@ export default function ReviewQueue() {
   const [categoryFilter, setCategoryFilter] = useState("");
   const [dateFrom, setDateFrom] = useState("");
   const [dateTo, setDateTo] = useState("");
+  const [typeFilter, setTypeFilter] = useState("all"); // "all" | "pending" | "rejected"
   const [openDropdown, setOpenDropdown] = useState(null);
   const [openCaseId, setOpenCaseId] = useState(null);
   const [toast, setToast] = useState(null);
@@ -39,9 +57,20 @@ export default function ReviewQueue() {
     return () => document.removeEventListener("mousedown", handleClickOutside);
   }, []);
 
+  const pendingCount = useMemo(() => cases?.filter((c) => c.has_pending).length || 0, [cases]);
+  const rejectedCount = useMemo(() => cases?.filter((c) => c.has_rejected).length || 0, [cases]);
+
   const filtered = useMemo(() => {
     if (!cases) return [];
     let rows = cases;
+
+    // Type filter (all vs pending vs rejected)
+    if (typeFilter === "pending") {
+      rows = rows.filter((c) => c.has_pending);
+    } else if (typeFilter === "rejected") {
+      rows = rows.filter((c) => c.has_rejected);
+    }
+
     if (search.trim()) {
       const q = search.toLowerCase();
       rows = rows.filter(
@@ -66,14 +95,23 @@ export default function ReviewQueue() {
       return sortBy === "newest" ? db_.localeCompare(da) : da.localeCompare(db_);
     });
     return rows;
-  }, [cases, search, categoryFilter, dateFrom, dateTo, sortBy]);
+  }, [cases, typeFilter, search, categoryFilter, dateFrom, dateTo, sortBy]);
 
-  const pendingCount = cases?.filter((c) => c.has_pending).length || 0;
-  const rejectedCount = cases?.filter((c) => c.has_rejected).length || 0;
-  const activeFilterCount = [search, categoryFilter, dateFrom, dateTo].filter(Boolean).length;
+  const activeFilterCount = [
+    search,
+    categoryFilter,
+    dateFrom,
+    dateTo,
+    typeFilter !== "all" ? typeFilter : null,
+  ].filter(Boolean).length;
 
   function resetFilters() {
-    setSearch(""); setCategoryFilter(""); setDateFrom(""); setDateTo("");
+    setSearch("");
+    setCategoryFilter("");
+    setDateFrom("");
+    setDateTo("");
+    setTypeFilter("all");
+    setSortBy("newest");
   }
 
   function showToast(message) {
@@ -87,75 +125,210 @@ export default function ReviewQueue() {
   }
 
   return (
-    <div className="page">
+    <div className="page review-queue-page">
+      {/* Toast Notification */}
       {toast && (
         <div className="toast-notif">
-          <span className="toast-icon">⚠</span>
-          <div><div className="toast-title">{toast}</div></div>
+          <AlertTriangle size={16} className="toast-icon" />
+          <div>
+            <div className="toast-title">{toast}</div>
+          </div>
           <button className="toast-close" onClick={() => setToast(null)}>×</button>
         </div>
       )}
 
-      <div className="page-head">
+      {/* 1. Executive Header */}
+      <div className="review-header">
         <div>
-          <h1 className="page-title">Review Queue</h1>
-          <p className="page-sub">Cases with products still needing your decision.</p>
+          <div className="review-title-row">
+            <h1 className="page-title" style={{ margin: 0 }}>Review Queue</h1>
+            <span className="review-count-badge">
+              <Inbox size={13} />
+              {cases ? `${cases.length} Total Pending` : "Loading…"}
+            </span>
+          </div>
+          <p className="page-sub" style={{ marginTop: 4 }}>
+            Inquiry cases with line items awaiting engineer approval or alternative model decisions.
+          </p>
+        </div>
+
+        <button
+          type="button"
+          className="review-refresh-btn"
+          onClick={refresh}
+          title="Refresh queue"
+        >
+          <RefreshCw size={13} className={loading ? "spin" : ""} />
+          <span>Refresh</span>
+        </button>
+      </div>
+
+      {/* 2. Interactive KPI / Summary Cards */}
+      <div className="review-metrics-grid">
+        <div
+          className={`review-metric-card ${typeFilter === "all" ? "active" : ""}`}
+          onClick={() => setTypeFilter("all")}
+          role="button"
+          tabIndex={0}
+        >
+          <div className="review-metric-header">
+            <span className="review-metric-title">Total in Queue</span>
+            <div className="review-metric-icon review-metric-icon-neutral">
+              <Layers size={18} />
+            </div>
+          </div>
+          <div className="review-metric-body">
+            <span className="review-metric-val">{cases?.length ?? 0}</span>
+            <span className="review-metric-hint">All open review cases</span>
+          </div>
+        </div>
+
+        <div
+          className={`review-metric-card ${typeFilter === "pending" ? "active" : ""}`}
+          onClick={() => setTypeFilter(typeFilter === "pending" ? "all" : "pending")}
+          role="button"
+          tabIndex={0}
+        >
+          <div className="review-metric-header">
+            <span className="review-metric-title">Pending Review</span>
+            <div className="review-metric-icon review-metric-icon-amber">
+              <Clock size={18} />
+            </div>
+          </div>
+          <div className="review-metric-body">
+            <span className="review-metric-val">{pendingCount}</span>
+            <span className="review-metric-hint">Awaiting your approval</span>
+          </div>
+        </div>
+
+        <div
+          className={`review-metric-card ${typeFilter === "rejected" ? "active" : ""}`}
+          onClick={() => setTypeFilter(typeFilter === "rejected" ? "all" : "rejected")}
+          role="button"
+          tabIndex={0}
+        >
+          <div className="review-metric-header">
+            <span className="review-metric-title">Needs Decision</span>
+            <div className="review-metric-icon review-metric-icon-rose">
+              <AlertTriangle size={18} />
+            </div>
+          </div>
+          <div className="review-metric-body">
+            <span className="review-metric-val">{rejectedCount}</span>
+            <span className="review-metric-hint">Rejected / needs alternative</span>
+          </div>
         </div>
       </div>
 
-      <div className="stat-cards">
-        <div className="stat-card stat-card-stacked">
-          <div className="stat-icon stat-icon-pending">📋</div>
-          <div className="stat-text-row">
-            <span className="stat-value">{pendingCount}</span>
-            <span className="stat-label"><b>Pending Review </b> </span>
-          </div>
-        </div>
-        <div className="stat-card stat-card-stacked">
-          <div className="stat-icon stat-icon-rejected">⚠️</div>
-          <div className="stat-text-row">
-            <span className="stat-value">{rejectedCount}</span>
-            <span className="stat-label"> <b>Rejected: Needs Decision</b></span>
-          </div>
-        </div>
+      {/* 3. Status Filter Tabs */}
+      <div className="review-status-tabs">
+        <button
+          type="button"
+          className={`review-tab-btn ${typeFilter === "all" ? "active" : ""}`}
+          onClick={() => setTypeFilter("all")}
+        >
+          All Cases
+          <span className="review-tab-count">{cases?.length ?? 0}</span>
+        </button>
+
+        <button
+          type="button"
+          className={`review-tab-btn ${typeFilter === "pending" ? "active" : ""}`}
+          onClick={() => setTypeFilter("pending")}
+        >
+          <span className="review-tab-dot review-tab-dot-amber" />
+          Pending Review
+          <span className="review-tab-count">{pendingCount}</span>
+        </button>
+
+        <button
+          type="button"
+          className={`review-tab-btn ${typeFilter === "rejected" ? "active" : ""}`}
+          onClick={() => setTypeFilter("rejected")}
+        >
+          <span className="review-tab-dot review-tab-dot-rose" />
+          Needs Decision
+          <span className="review-tab-count">{rejectedCount}</span>
+        </button>
       </div>
 
+      {/* 4. Search & Filter Bar */}
       <div className="filter-bar" ref={dropdownRef}>
         <div className="filter-search-wrap">
-          <span className="filter-search-icon">🔍</span>
+          <Search size={15} className="filter-search-icon" />
           <input
             type="text"
             className="search-input filter-search-input"
-            placeholder="Search by reference, customer, model, or email…"
+            placeholder="Search by case ref, customer, or project…"
             value={search}
             onChange={(e) => setSearch(e.target.value)}
           />
+          {search && (
+            <button
+              type="button"
+              className="cases-search-clear"
+              onClick={() => setSearch("")}
+              title="Clear search"
+            >
+              <X size={13} />
+            </button>
+          )}
         </div>
 
         <div className="filter-pill-wrap">
-          <button className={`filter-pill ${categoryFilter ? "filter-pill-active" : ""}`} onClick={() => setOpenDropdown(openDropdown === "category" ? null : "category")}>
-            Category{categoryFilter ? `: ${categoryFilter}` : ""} <span className="chevron">▾</span>
+          <button
+            type="button"
+            className={`filter-pill ${categoryFilter ? "filter-pill-active" : ""}`}
+            onClick={() => setOpenDropdown(openDropdown === "category" ? null : "category")}
+          >
+            <span>Category{categoryFilter ? `: ${categoryFilter}` : ""}</span>
+            <ChevronDown size={14} className={`dropdown-chevron ${openDropdown === "category" ? "open" : ""}`} />
           </button>
           {openDropdown === "category" && (
             <div className="filter-dropdown-panel">
-              <button className="filter-option" onClick={() => { setCategoryFilter(""); setOpenDropdown(null); }}>All</button>
+              <button
+                type="button"
+                className={`filter-option ${categoryFilter === "" ? "active" : ""}`}
+                onClick={() => { setCategoryFilter(""); setOpenDropdown(null); }}
+              >
+                <span>All Categories</span>
+                {categoryFilter === "" && <Check size={13} className="check-icon" />}
+              </button>
               {CATEGORY_OPTIONS.map((c) => (
-                <button key={c} className="filter-option" onClick={() => { setCategoryFilter(c); setOpenDropdown(null); }}>{c}</button>
+                <button
+                  type="button"
+                  key={c}
+                  className={`filter-option ${categoryFilter === c ? "active" : ""}`}
+                  onClick={() => { setCategoryFilter(c); setOpenDropdown(null); }}
+                >
+                  <span>{c}</span>
+                  {categoryFilter === c && <Check size={13} className="check-icon" />}
+                </button>
               ))}
             </div>
           )}
         </div>
 
         <div className="filter-pill-wrap">
-          <button className={`filter-pill ${(dateFrom || dateTo) ? "filter-pill-active" : ""}`} onClick={() => setOpenDropdown(openDropdown === "date" ? null : "date")}>
-            Date Range <span className="chevron">▾</span>
+          <button
+            type="button"
+            className={`filter-pill ${(dateFrom || dateTo) ? "filter-pill-active" : ""}`}
+            onClick={() => setOpenDropdown(openDropdown === "date" ? null : "date")}
+          >
+            <Calendar size={13} />
+            <span>Date Range</span>
+            <ChevronDown size={14} className={`dropdown-chevron ${openDropdown === "date" ? "open" : ""}`} />
           </button>
           {openDropdown === "date" && (
             <div className="filter-dropdown-panel filter-dropdown-date">
-              <label>From</label>
-              <input type="date" value={dateFrom} onChange={(e) => setDateFrom(e.target.value)} />
-              <label>To</label>
-              <input type="date" value={dateTo} onChange={(e) => setDateTo(e.target.value)} />
+              <div className="filter-date-row">
+                <label>From Date</label>
+                <input type="date" value={dateFrom} onChange={(e) => setDateFrom(e.target.value)} />
+              </div>
+              <div className="filter-date-row">
+                <label>To Date</label>
+                <input type="date" value={dateTo} onChange={(e) => setDateTo(e.target.value)} />
+              </div>
             </div>
           )}
         </div>
@@ -166,66 +339,159 @@ export default function ReviewQueue() {
         </select>
 
         {activeFilterCount > 0 && (
-          <button className="filter-reset-link" onClick={resetFilters}>Reset</button>
+          <button type="button" className="filter-reset-link" onClick={resetFilters}>
+            <RotateCcw size={12} />
+            <span>Reset Filters</span>
+          </button>
         )}
       </div>
 
       {error && <div className="flash flash-error">{error}</div>}
 
-      <div>
+      {/* 5. Modern Queue Table */}
+      <div className="review-table-card">
         {loading && !cases ? (
-          <div className="loading-state">Loading…</div>
+          <div className="loading-state" style={{ padding: "48px 20px" }}>
+            <RefreshCw size={22} className="spin" style={{ color: "var(--brand)", marginBottom: 8 }} />
+            <div>Loading Review Queue…</div>
+          </div>
         ) : filtered.length > 0 ? (
-          <table className="data-table case-summary-table">
-            <thead>
-              <tr>
-                <th>Case Ref</th>
-                <th>Customer</th>
-                <th>Category</th>
-                <th>Received</th>
-                <th>Top Match Confidence</th>
-                <th>Status</th>
-                <th></th>
-              </tr>
-            </thead>
-            <tbody>
-              {filtered.map((c) => (
-                <tr key={c.case_id} className={c.has_rejected && !c.has_pending ? "row-rejected" : ""}>
-                  <td>
-                    <div className="cell-primary">{c.internal_ref}</div>
-                    {c.revision_count > 1 && (
-                      <div className="cell-secondary">R{c.revision_no} · {c.revision_count} versions</div>
-                    )}
-                  </td>
-                  <td>
-                    <div className="cell-primary">{c.customer_name || "—"}</div>
-                  </td>
-                  <td>{c.category || "—"}</td>
-                  <td>{c.enq_received_at ? new Date(c.enq_received_at).toLocaleDateString() : "—"}</td>
-                  <td>
-                    {c.top_confidence !== null && c.top_confidence !== undefined ? (
-                      <span className={`confidence-badge ${confidenceClass(c.top_confidence)}`}>
-                        {Math.round(parseFloat(c.top_confidence) * 100)}%
-                      </span>
-                    ) : "—"}
-                  </td>
-                  <td><span className={statusClass(c.status)}>{c.status}</span></td>
-                  <td>
-                    <button className="btn btn-approve" onClick={() => setOpenCaseId(c.case_id)}>
-                      View Details →
-                    </button>
-                  </td>
+          <div className="review-table-scroll">
+            <table className="review-modern-table">
+              <thead>
+                <tr>
+                  <th>Case Reference</th>
+                  <th>Customer & Project</th>
+                  <th>Category</th>
+                  <th>Received</th>
+                  <th>Top Match Conf.</th>
+                  <th>Lifecycle Status</th>
+                  <th style={{ textAlign: "right" }}>Action</th>
                 </tr>
-              ))}
-            </tbody>
-          </table>
+              </thead>
+              <tbody>
+                {filtered.map((c) => {
+                  const isRejectedNeedsDecision = c.has_rejected && !c.has_pending;
+                  const confPct = c.top_confidence !== null && c.top_confidence !== undefined
+                    ? Math.round(parseFloat(c.top_confidence) * 100)
+                    : null;
+
+                  return (
+                    <tr
+                      key={c.case_id}
+                      className={`review-table-row ${isRejectedNeedsDecision ? "row-needs-decision" : ""}`}
+                    >
+                      {/* Case Ref */}
+                      <td>
+                        <div className="review-ref-cell">
+                          <span className="review-ref-badge">{c.internal_ref}</span>
+                          {c.revision_count > 1 && (
+                            <span className="review-rev-pill">R{c.revision_no} ({c.revision_count}v)</span>
+                          )}
+                        </div>
+                      </td>
+
+                      {/* Customer & Project */}
+                      <td>
+                        <div className="review-customer-cell">
+                          <span className="review-cust-name">{c.customer_name || "—"}</span>
+                          {c.project_name && (
+                            <span className="review-proj-sub">
+                              <Building2 size={11} style={{ marginRight: 3, verticalAlign: "middle" }} />
+                              {c.project_name}
+                            </span>
+                          )}
+                        </div>
+                      </td>
+
+                      {/* Category */}
+                      <td>
+                        <span className="review-category-badge">{c.category || "General"}</span>
+                      </td>
+
+                      {/* Received Date */}
+                      <td className="review-date-cell">
+                        {formatDate(c.enq_received_at)}
+                      </td>
+
+                      {/* Top Match Confidence */}
+                      <td>
+                        {confPct !== null ? (
+                          <div className="review-conf-wrap">
+                            <span className={`confidence-badge ${confidenceClass(c.top_confidence)}`}>
+                              {confPct}%
+                            </span>
+                          </div>
+                        ) : (
+                          <span style={{ color: "var(--muted)" }}>—</span>
+                        )}
+                      </td>
+
+                      {/* Status + Warning badge if rejected */}
+                      <td>
+                        <div className="review-status-wrap">
+                          <span className={statusClass(c.status)}>{c.status}</span>
+                          {isRejectedNeedsDecision && (
+                            <span className="review-warn-pill">
+                              <AlertTriangle size={11} />
+                              Needs Decision
+                            </span>
+                          )}
+                        </div>
+                      </td>
+
+                      {/* Action Button */}
+                      <td style={{ textAlign: "right" }}>
+                        <button
+                          type="button"
+                          className="review-action-btn"
+                          onClick={() => setOpenCaseId(c.case_id)}
+                        >
+                          <span>Review Case</span>
+                          <ArrowUpRight size={14} />
+                        </button>
+                      </td>
+                    </tr>
+                  );
+                })}
+              </tbody>
+            </table>
+          </div>
         ) : (
-          <div className="empty-state">
-            <p>{search.trim() || activeFilterCount > 0 ? "No cases match your filters." : "Nothing pending review."}</p>
+          <div className="review-empty-state">
+            <div className="review-empty-icon">
+              {search.trim() || activeFilterCount > 0 ? (
+                <Inbox size={28} />
+              ) : (
+                <CheckCircle2 size={30} style={{ color: "var(--brand)" }} />
+              )}
+            </div>
+            <h3 className="review-empty-title">
+              {search.trim() || activeFilterCount > 0
+                ? "No matching queue cases"
+                : "Queue is clear"}
+            </h3>
+            <p className="review-empty-sub">
+              {search.trim() || activeFilterCount > 0
+                ? "Try clearing your filters or changing your search criteria."
+                : "All automated product matches have been reviewed and approved."}
+            </p>
+            {activeFilterCount > 0 && (
+              <button
+                type="button"
+                className="cases-reset-btn"
+                style={{ marginTop: 12 }}
+                onClick={resetFilters}
+              >
+                <RotateCcw size={12} />
+                <span>Reset All Filters</span>
+              </button>
+            )}
           </div>
         )}
       </div>
 
+      {/* Modal Dialog */}
       {openCaseId && (
         <CaseReviewModal
           caseId={openCaseId}

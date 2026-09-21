@@ -22,8 +22,9 @@ from app.schemas import (
     CaseOut, CaseDetailOut, LineItemOut, QuotationOut, QuotationDetailOut,
     QuotationLineOut, OutboundMessageOut, EditRecommendationRequest, CaseSummaryOut,
     EnquiryEmailOut, StatusHistoryEntry, EmailUpdateRequest, RevisionSummary, QtnGroupOut,
-    QuotationLineUpdateRequest, DocumentOut, PricingUpdateRequest, PricingSnapshotOut, PricingLineOut,
-    CommunicationEntry, BulkAiMatchRequest, BulkAiMatchResponse, BulkAiMatchResultItem,
+    QuotationLineUpdateRequest, QuotationLineCreateRequest, DocumentOut, PricingUpdateRequest,
+    PricingSnapshotOut, PricingLineOut, CommunicationEntry, BulkAiMatchRequest,
+    BulkAiMatchResponse, BulkAiMatchResultItem,
 )
 
 router = APIRouter(prefix="/api", tags=["cases"], dependencies=[Depends(get_current_user)])
@@ -1042,3 +1043,59 @@ def _run_ai_match_for_case(db: Session, case_id: int) -> BulkAiMatchResultItem:
 def bulk_ai_match(payload: BulkAiMatchRequest, db: Session = Depends(get_db)):
     results = [_run_ai_match_for_case(db, cid) for cid in payload.case_ids]
     return BulkAiMatchResponse(results=results)
+
+@router.post("/cases/{case_id}/quotation/lines", response_model=QuotationLineOut)
+def create_quotation_line(case_id: int, payload: QuotationLineCreateRequest, db: Session = Depends(get_db)):
+    """
+    Lets the engineer add a brand-new line item (not AI-matched) directly
+    inside the Generate Quotation modal — e.g. an accessory or spare part
+    manually typed in. Creates both the underlying ExtractedLineItem (so
+    it behaves like any other line) and the QuotationLine row for the
+    current draft.
+    """
+    case = db.get(InquiryCase, case_id)
+    if case is None:
+        raise HTTPException(404, "Case not found")
+
+    quotation = (
+        db.query(QuotationDraft).filter_by(case_id=case_id)
+        .order_by(QuotationDraft.revision_no.desc()).first()
+    )
+    if quotation is None:
+        raise HTTPException(404, "No quotation draft exists for this case yet")
+
+    existing_line_items = db.query(ExtractedLineItem).filter_by(case_id=case_id).count()
+    existing_quote_lines = db.query(QuotationLine).filter_by(draft_id=quotation.draft_id).count()
+
+    qty_decimal = None
+    if payload.qty:
+        try:
+            qty_decimal = Decimal(str(payload.qty))
+        except Exception:
+            qty_decimal = None
+
+    new_item = ExtractedLineItem(
+        case_id=case_id,
+        line_no=existing_line_items + 1,
+        description=payload.description or payload.model_code or "Manually added item",
+        qty=qty_decimal,
+        uom=payload.uom or "NOS",
+    )
+    db.add(new_item)
+    db.flush()
+
+    new_line = QuotationLine(
+        draft_id=quotation.draft_id,
+        line_item_id=new_item.line_item_id,
+        line_no=existing_quote_lines + 1,
+        model_code=payload.model_code,
+        description=payload.description,
+        qty=payload.qty,
+        uom=payload.uom or "NOS",
+        technical_spec_text=payload.technical_spec_text,
+    )
+    db.add(new_line)
+    db.commit()
+    db.refresh(new_line)
+
+    return QuotationLineOut.model_validate(new_line)
