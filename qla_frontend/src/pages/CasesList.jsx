@@ -13,10 +13,15 @@ import {
   Folder,
   Building2,
   Check,
-  AlertCircle
+  AlertCircle,
+  ChevronLeft,
+  ChevronRight,
+  ChevronsLeft,
+  ChevronsRight
 } from "lucide-react";
 import { api } from "../api/client";
 import { usePolling } from "../api/usePolling";
+import { formatDate } from "../utils/dateFormat";
 
 function statusClass(status) {
   return `cases-status-badge cases-status-${(status || "").toLowerCase()}`;
@@ -43,6 +48,9 @@ function confidenceTier(conf) {
 }
 
 function getPageNumbers(current, total) {
+  if (total <= 7) {
+    return Array.from({ length: total }, (_, i) => i + 1);
+  }
   const delta = 1;
   const range = [];
   for (let i = Math.max(2, current - delta); i <= Math.min(total - 1, current + delta); i++) {
@@ -55,42 +63,28 @@ function getPageNumbers(current, total) {
   return range;
 }
 
-const CASES_FILTERS_KEY = "qla.casesList.filters";
-
-function loadCasesFilters() {
-  try {
-    const raw = sessionStorage.getItem(CASES_FILTERS_KEY);
-    if (!raw) return {};
-    const parsed = JSON.parse(raw);
-    return parsed && typeof parsed === "object" ? parsed : {};
-  } catch {
-    return {};
-  }
-}
-
 export default function CasesList() {
   const { data: cases, loading, error, reload } = usePolling(() => api.cases(), 12000);
-  const savedFilters = useRef(loadCasesFilters()).current;
-  const [search, setSearch] = useState(savedFilters.search || "");
-  const [dateFrom, setDateFrom] = useState(savedFilters.dateFrom || "");
-  const [dateTo, setDateTo] = useState(savedFilters.dateTo || "");
-  const [statusFilter, setStatusFilter] = useState(savedFilters.statusFilter || "all");
-  const [page, setPage] = useState(Number(savedFilters.page) > 0 ? Number(savedFilters.page) : 1);
+  const [search, setSearch] = useState("");
+  const [dateFrom, setDateFrom] = useState("");
+  const [dateTo, setDateTo] = useState("");
+  const [statusFilter, setStatusFilter] = useState("all");
+  const [page, setPage] = useState(() => {
+    try {
+      const saved = sessionStorage.getItem("qla_cases_page");
+      const parsed = parseInt(saved, 10);
+      return Number.isInteger(parsed) && parsed > 0 ? parsed : 1;
+    } catch {
+      return 1;
+    }
+  });
   const [aiRunningId, setAiRunningId] = useState(null);
   const [aiResults, setAiResults] = useState({});
   const [selectedIds, setSelectedIds] = useState(new Set());
   const [batchRunning, setBatchRunning] = useState(false);
   const [batchProgress, setBatchProgress] = useState(null);
   const tableWrapRef = useRef(null);
-  const PAGE_SIZE = 12;
-  const skipPageReset = useRef(true);
-
-  useEffect(() => {
-    sessionStorage.setItem(
-      CASES_FILTERS_KEY,
-      JSON.stringify({ search, dateFrom, dateTo, statusFilter, page })
-    );
-  }, [search, dateFrom, dateTo, statusFilter, page]);
+  const PAGE_SIZE = 15;
 
   // Real-time status counts derived from loaded cases
   const statusCounts = useMemo(() => {
@@ -127,13 +121,47 @@ export default function CasesList() {
     return rows;
   }, [cases, search, dateFrom, dateTo, statusFilter]);
 
+  const totalPages = Math.max(1, Math.ceil(filtered.length / PAGE_SIZE));
+  const safePage = Math.min(page, totalPages);
+  const paginated = filtered.slice((safePage - 1) * PAGE_SIZE, safePage * PAGE_SIZE);
+
+  const isFirstRender = useRef(true);
   useEffect(() => {
-    if (skipPageReset.current) {
-      skipPageReset.current = false;
+    if (isFirstRender.current) {
+      isFirstRender.current = false;
       return;
     }
     setPage(1);
+    try {
+      sessionStorage.setItem("qla_cases_page", "1");
+    } catch {
+      // ignore
+    }
   }, [search, dateFrom, dateTo, statusFilter]);
+
+  useEffect(() => {
+    if (totalPages > 0 && page > totalPages) {
+      setPage(totalPages);
+      try {
+        sessionStorage.setItem("qla_cases_page", String(totalPages));
+      } catch {
+        // ignore
+      }
+    }
+  }, [page, totalPages]);
+
+  const handlePageChange = (newPage) => {
+    if (newPage < 1 || newPage > totalPages || newPage === page) return;
+    setPage(newPage);
+    try {
+      sessionStorage.setItem("qla_cases_page", String(newPage));
+    } catch {
+      // ignore
+    }
+    if (tableWrapRef.current) {
+      tableWrapRef.current.scrollIntoView({ behavior: "smooth", block: "start" });
+    }
+  };
 
   useEffect(() => {
     function handleClickOutside(e) {
@@ -144,10 +172,6 @@ export default function CasesList() {
     document.addEventListener("mousedown", handleClickOutside);
     return () => document.removeEventListener("mousedown", handleClickOutside);
   }, []);
-
-  const totalPages = Math.max(1, Math.ceil(filtered.length / PAGE_SIZE));
-  const safePage = Math.min(page, totalPages);
-  const paginated = filtered.slice((safePage - 1) * PAGE_SIZE, safePage * PAGE_SIZE);
 
   function clearDates() {
     setDateFrom("");
@@ -160,7 +184,11 @@ export default function CasesList() {
     setDateTo("");
     setStatusFilter("all");
     setPage(1);
-    sessionStorage.removeItem(CASES_FILTERS_KEY);
+    try {
+      sessionStorage.setItem("qla_cases_page", "1");
+    } catch {
+      // ignore
+    }
   }
 
   async function handleRunAiMatch(caseId) {
@@ -316,15 +344,6 @@ export default function CasesList() {
               onChange={(e) => setDateTo(e.target.value)}
               title="To date"
             />
-            {(dateFrom || dateTo) && (
-              <button
-                className="cases-search-clear"
-                onClick={clearDates}
-                title="Clear dates"
-              >
-                <X size={14} />
-              </button>
-            )}
           </div>
         </div>
 
@@ -408,7 +427,6 @@ export default function CasesList() {
                     <th style={{ width: 130 }}>Status</th>
                     <th style={{ minWidth: 220 }}>Customer & Project</th>
                     <th style={{ width: 130 }}>Received</th>
-                    <th style={{ width: 150 }}>AI Match Conf.</th>
                     <th style={{ width: 200, textAlign: "center" }}>Actions</th>
                   </tr>
                 </thead>
@@ -473,34 +491,12 @@ export default function CasesList() {
                           )}
                         </td>
 
-                        {/* 5. Received Date */}
+                        {/* 5. Received Date (DD/MM/YYYY) */}
                         <td style={{ color: "var(--ink-soft)", whiteSpace: "nowrap" }}>
-                          {c.enq_received_at ? new Date(c.enq_received_at).toLocaleDateString() : "—"}
+                          {formatDate(c.enq_received_at)}
                         </td>
 
-                        {/* 6. AI Match Confidence */}
-                        <td>
-                          {conf !== null && conf !== undefined ? (
-                            <span className={`cases-conf-pill cases-conf-${tier}`}>
-                              <span
-                                className="cases-dot"
-                                style={{
-                                  background:
-                                    tier === "high"
-                                      ? "#10b981"
-                                      : tier === "mid"
-                                      ? "#f59e0b"
-                                      : "#ef4444"
-                                }}
-                              />
-                              {Math.round(parseFloat(conf) * 100)}% Match
-                            </span>
-                          ) : (
-                            <span className="cases-conf-pill cases-conf-none">—</span>
-                          )}
-                        </td>
-
-                        {/* 7. Actions */}
+                        {/* 6. Actions */}
                         <td>
                           <div className="cases-action-group">
                             <Link
@@ -548,47 +544,89 @@ export default function CasesList() {
             </div>
 
             {/* Pagination Controls */}
-            {totalPages > 1 && (
+            {filtered.length > 0 && (
               <div className="cases-pagination-wrap">
                 <div className="cases-pagination-info">
-                  Showing <strong>{(safePage - 1) * PAGE_SIZE + 1}</strong> to{" "}
-                  <strong>{Math.min(safePage * PAGE_SIZE, filtered.length)}</strong> of{" "}
-                  <strong>{filtered.length}</strong> inquiries
+                  <span>
+                    Showing <span className="cases-pagination-num">{(safePage - 1) * PAGE_SIZE + 1}</span>–
+                    <span className="cases-pagination-num">{Math.min(safePage * PAGE_SIZE, filtered.length)}</span> of{" "}
+                    <span className="cases-pagination-num">{filtered.length}</span> cases
+                  </span>
+                  <span className="cases-pagination-badge">15 / page</span>
                 </div>
 
-                <div className="cases-pagination-btns">
-                  <button
-                    className="cases-page-btn"
-                    disabled={safePage === 1}
-                    onClick={() => setPage(safePage - 1)}
-                  >
-                    ‹ Prev
-                  </button>
+                {totalPages > 1 && (
+                  <div className="cases-pagination-btns">
+                    {/* First Page */}
+                    <button
+                      type="button"
+                      className="cases-page-btn cases-page-btn-nav"
+                      disabled={safePage === 1}
+                      onClick={() => handlePageChange(1)}
+                      title="First page"
+                      aria-label="First page"
+                    >
+                      <ChevronsLeft size={15} />
+                    </button>
 
-                  {getPageNumbers(safePage, totalPages).map((p, i) =>
-                    p === "..." ? (
-                      <span key={"dots-" + i} style={{ padding: "0 6px", color: "var(--muted)" }}>
-                        …
-                      </span>
-                    ) : (
-                      <button
-                        key={p}
-                        className={`cases-page-btn ${p === safePage ? "active" : ""}`}
-                        onClick={() => setPage(p)}
-                      >
-                        {p}
-                      </button>
-                    )
-                  )}
+                    {/* Previous Page */}
+                    <button
+                      type="button"
+                      className="cases-page-btn cases-page-btn-nav"
+                      disabled={safePage === 1}
+                      onClick={() => handlePageChange(safePage - 1)}
+                      title="Previous page"
+                      aria-label="Previous page"
+                    >
+                      <ChevronLeft size={15} />
+                      <span>Prev</span>
+                    </button>
 
-                  <button
-                    className="cases-page-btn"
-                    disabled={safePage === totalPages}
-                    onClick={() => setPage(safePage + 1)}
-                  >
-                    Next ›
-                  </button>
-                </div>
+                    {/* Page Numbers */}
+                    {getPageNumbers(safePage, totalPages).map((p, i) =>
+                      p === "..." ? (
+                        <span key={"dots-" + i} className="cases-pagination-dots">
+                          …
+                        </span>
+                      ) : (
+                        <button
+                          key={p}
+                          type="button"
+                          className={`cases-page-btn ${p === safePage ? "active" : ""}`}
+                          onClick={() => handlePageChange(p)}
+                          aria-current={p === safePage ? "page" : undefined}
+                        >
+                          {p}
+                        </button>
+                      )
+                    )}
+
+                    {/* Next Page */}
+                    <button
+                      type="button"
+                      className="cases-page-btn cases-page-btn-nav"
+                      disabled={safePage === totalPages}
+                      onClick={() => handlePageChange(safePage + 1)}
+                      title="Next page"
+                      aria-label="Next page"
+                    >
+                      <span>Next</span>
+                      <ChevronRight size={15} />
+                    </button>
+
+                    {/* Last Page */}
+                    <button
+                      type="button"
+                      className="cases-page-btn cases-page-btn-nav"
+                      disabled={safePage === totalPages}
+                      onClick={() => handlePageChange(totalPages)}
+                      title="Last page"
+                      aria-label="Last page"
+                    >
+                      <ChevronsRight size={15} />
+                    </button>
+                  </div>
+                )}
               </div>
             )}
           </div>

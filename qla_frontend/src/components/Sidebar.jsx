@@ -11,13 +11,22 @@ import {
   ChevronRight,
   Menu,
   X,
+  BookOpen,
+  Sliders,
+  ShieldCheck,
+  Package
 } from "lucide-react";
 
-const NAV_ITEMS = [
+const MAIN_NAV_ITEMS = [
   { to: "/dashboard", label: "Dashboard", Icon: LayoutDashboard },
   { to: "/", end: true, label: "Review Queue", Icon: ClipboardList },
   { to: "/cases", label: "All Cases", Icon: FolderOpen },
-  { to: "/users", label: "Users", Icon: Users, adminOnly: true },
+];
+
+const MASTER_NAV_ITEMS = [
+  { to: "/master/catalog", label: "Product Catalog", Icon: BookOpen, adminOnly: true },
+  { to: "/master/users", label: "Users & Roles", Icon: Users, adminOnly: true },
+  { to: "/master/settings", label: "Admin Settings", Icon: Sliders, adminOnly: true },
 ];
 
 export default function Sidebar() {
@@ -107,7 +116,8 @@ export default function Sidebar() {
         </div>
 
         <nav className="sidebar-nav">
-          {NAV_ITEMS.filter((item) => !item.adminOnly || user.role === "ADMIN").map((item) => (
+          {/* 1. Main Navigation */}
+          {MAIN_NAV_ITEMS.map((item) => (
             <NavLink
               key={item.to}
               to={item.to}
@@ -122,6 +132,31 @@ export default function Sidebar() {
               <span className="sidebar-label">{item.label}</span>
             </NavLink>
           ))}
+
+          {/* 2. Master Section (Admin Only) */}
+          {user.role === "ADMIN" && (
+            <div className="sidebar-group">
+              <div className="sidebar-group-heading">
+                {!desktopCollapsed && <span>MASTER</span>}
+                {desktopCollapsed && <div className="sidebar-group-sep" />}
+              </div>
+
+              {MASTER_NAV_ITEMS.map((item) => (
+                <NavLink
+                  key={item.to}
+                  to={item.to}
+                  className={({ isActive }) => `sidebar-link ${isActive ? "active" : ""}`}
+                  title={desktopCollapsed ? item.label : undefined}
+                  onClick={() => setMobileOpen(false)}
+                >
+                  <span className="sidebar-icon">
+                    <item.Icon size={18} />
+                  </span>
+                  <span className="sidebar-label">{item.label}</span>
+                </NavLink>
+              ))}
+            </div>
+          )}
         </nav>
 
         <div className="sidebar-bottom">

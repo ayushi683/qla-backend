@@ -1,4 +1,5 @@
 import { useState, useMemo } from "react";
+import { Plus, Trash2 } from "lucide-react";
 import { api } from "../api/client";
 
 function formatCurrency(n) {
@@ -21,6 +22,27 @@ export default function GenerateQuotationModal({ caseId, lines: initialLines, on
     setLines(lines.map((l) => (l.line_item_id === lineItemId ? { ...l, [field]: value } : l)));
   }
 
+  function handleAddNewItem() {
+    const newItemId = `custom_${Date.now()}`;
+    const nextLineNo = lines.length + 1;
+    const newLine = {
+      line_item_id: newItemId,
+      line_no: nextLineNo,
+      model_code: "",
+      description: "",
+      qty: "1",
+      uom: "NOS",
+      technical_spec_text: "",
+      _unitPrice: "",
+      isCustomAdded: true,
+    };
+    setLines([...lines, newLine]);
+  }
+
+  function handleRemoveLine(lineItemId) {
+    setLines(lines.filter((l) => l.line_item_id !== lineItemId));
+  }
+
   const totals = useMemo(() => {
     const subtotal = lines.reduce((sum, l) => sum + (Number(l._unitPrice) || 0) * (Number(l.qty) || 0), 0);
     const discountAmt = subtotal * ((Number(discountPct) || 0) / 100);
@@ -35,19 +57,42 @@ export default function GenerateQuotationModal({ caseId, lines: initialLines, on
     setSaving(true);
     setError("");
     try {
-      for (const l of lines) {
+      // Save edits to existing (AI-matched) lines.
+      for (const l of lines.filter((l) => !l.isCustomAdded)) {
         await api.updateQuotationLine(caseId, l.line_item_id, {
-          model_code: l.model_code, description: l.description,
-          qty: l.qty, technical_spec_text: l.technical_spec_text,
+          model_code: l.model_code,
+          description: l.description,
+          qty: l.qty,
+          technical_spec_text: l.technical_spec_text,
         });
       }
+
+      // Create the manually-added lines for real, and swap their
+      // temporary client-side id for the real line_item_id so pricing
+      // can reference them correctly below.
+      const createdCustomLines = [];
+      for (const l of lines.filter((l) => l.isCustomAdded)) {
+        const created = await api.createQuotationLine(caseId, {
+          model_code: l.model_code,
+          description: l.description,
+          qty: l.qty,
+          uom: l.uom,
+          technical_spec_text: l.technical_spec_text,
+        });
+        createdCustomLines.push({ ...l, line_item_id: created.line_item_id });
+      }
+
+      const allLinesForPricing = [
+        ...lines.filter((l) => !l.isCustomAdded),
+        ...createdCustomLines,
+      ];
 
       await api.savePricing(caseId, {
         currency_code: "INR",
         discount_pct: discountPct || 0,
         tax_pct: taxPct || 0,
         freight_amount: freightAmount || 0,
-        lines: lines.map((l) => ({
+        lines: allLinesForPricing.map((l) => ({
           quote_line_id: l.line_item_id,
           unit_price: l._unitPrice || 0,
         })),
@@ -75,26 +120,96 @@ export default function GenerateQuotationModal({ caseId, lines: initialLines, on
         <div className="qgm-body">
           {error && <div className="flash flash-error">{error}</div>}
 
-          <p className="qgm-section-label">Line items</p>
+          <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 10 }}>
+            <p className="qgm-section-label" style={{ margin: 0 }}>Line items ({lines.length})</p>
+            <button
+              type="button"
+              className="btn btn-outline"
+              onClick={handleAddNewItem}
+              style={{
+                display: "inline-flex",
+                alignItems: "center",
+                gap: 6,
+                padding: "5px 12px",
+                fontSize: "0.8rem",
+                fontWeight: 600,
+                borderRadius: 8,
+                cursor: "pointer",
+                background: "var(--brand-tint, #e6f2ec)",
+                color: "var(--brand-dark, #0d4a33)",
+                borderColor: "#b8ccbf"
+              }}
+            >
+              <Plus size={14} />
+              Add New Item
+            </button>
+          </div>
+
           <div className="qgm-table-wrap">
             <table className="qgm-table">
               <thead>
-                <tr><th>Model</th><th>Description</th><th>Qty</th><th>Unit price</th></tr>
+                <tr>
+                  <th style={{ width: 140 }}>Model</th>
+                  <th>Description</th>
+                  <th style={{ width: 70 }}>Qty</th>
+                  <th style={{ width: 120 }}>Unit price</th>
+                  <th style={{ width: 44, textAlign: "center" }}></th>
+                </tr>
               </thead>
               <tbody>
                 {lines.map((l) => (
                   <tr key={l.line_item_id}>
                     <td>
-                      <input value={l.model_code || ""} onChange={(e) => updateLineField(l.line_item_id, "model_code", e.target.value)} />
+                      <input
+                        value={l.model_code || ""}
+                        onChange={(e) => updateLineField(l.line_item_id, "model_code", e.target.value)}
+                        placeholder="Model code"
+                      />
                     </td>
                     <td>
-                      <input value={l.description || ""} onChange={(e) => updateLineField(l.line_item_id, "description", e.target.value)} />
+                      <input
+                        value={l.description || ""}
+                        onChange={(e) => updateLineField(l.line_item_id, "description", e.target.value)}
+                        placeholder="Item description & details"
+                      />
                     </td>
                     <td>
-                      <input value={l.qty || ""} onChange={(e) => updateLineField(l.line_item_id, "qty", e.target.value)} className="qgm-qty" />
+                      <input
+                        value={l.qty || ""}
+                        onChange={(e) => updateLineField(l.line_item_id, "qty", e.target.value)}
+                        className="qgm-qty"
+                        placeholder="1"
+                      />
                     </td>
                     <td>
-                      <input type="number" value={l._unitPrice} onChange={(e) => updateLineField(l.line_item_id, "_unitPrice", e.target.value)} placeholder="0.00" />
+                      <input
+                        type="number"
+                        value={l._unitPrice}
+                        onChange={(e) => updateLineField(l.line_item_id, "_unitPrice", e.target.value)}
+                        placeholder="0.00"
+                      />
+                    </td>
+                    <td style={{ textAlign: "center", verticalAlign: "middle" }}>
+                      {l.isCustomAdded ? (
+                        <button
+                          type="button"
+                          onClick={() => handleRemoveLine(l.line_item_id)}
+                          title="Remove this item"
+                          style={{
+                            background: "transparent",
+                            border: "none",
+                            color: "var(--danger, #b3261e)",
+                            cursor: "pointer",
+                            padding: "4px",
+                            display: "inline-flex",
+                            alignItems: "center",
+                            justifyContent: "center",
+                            borderRadius: 4,
+                          }}
+                        >
+                          <Trash2 size={15} />
+                        </button>
+                      ) : null}
                     </td>
                   </tr>
                 ))}
@@ -102,11 +217,12 @@ export default function GenerateQuotationModal({ caseId, lines: initialLines, on
             </table>
           </div>
 
-            {!hasAllPrices && (
+          {!hasAllPrices && (
             <p style={{ fontSize: "0.8rem", color: "var(--warn)", marginBottom: 10 }}>
               ⚠ Enter a unit price (greater than 0) for every line item to enable generation.
             </p>
           )}
+
           <div className="qgm-terms-grid">
             <div>
               <label>Discount %</label>

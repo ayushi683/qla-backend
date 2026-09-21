@@ -7,6 +7,9 @@ import CasesList from "./pages/CasesList";
 import CaseDetail from "./pages/CaseDetail";
 import UsersManagement from "./pages/UsersManagement";
 import Dashboard from "./pages/Dashboard";
+import MasterHub from "./pages/master/MasterHub";
+import CatalogManagement from "./pages/master/CatalogManagement";
+import AdminSettings from "./pages/master/AdminSettings";
 
 function RequireAuth({ children }) {
   const { user } = useAuth();
@@ -55,16 +58,49 @@ function AppRoutes() {
         path="/users"
         element={
           <RequireAuth>
-            <Layout><UsersManagement /></Layout>
+            <Navigate to="/master/users" replace />
           </RequireAuth>
         }
       />
-
-            <Route
+      <Route
         path="/dashboard"
         element={
           <RequireAuth>
             <Layout><Dashboard /></Layout>
+          </RequireAuth>
+        }
+      />
+
+      {/* MASTER SECTION ROUTES */}
+      <Route
+        path="/master"
+        element={
+          <RequireAuth>
+            <Layout><MasterHub /></Layout>
+          </RequireAuth>
+        }
+      />
+      <Route
+        path="/master/catalog"
+        element={
+          <RequireAuth>
+            <Layout><CatalogManagement /></Layout>
+          </RequireAuth>
+        }
+      />
+      <Route
+        path="/master/users"
+        element={
+          <RequireAuth>
+            <Layout><UsersManagement /></Layout>
+          </RequireAuth>
+        }
+      />
+      <Route
+        path="/master/settings"
+        element={
+          <RequireAuth>
+            <Layout><AdminSettings /></Layout>
           </RequireAuth>
         }
       />
