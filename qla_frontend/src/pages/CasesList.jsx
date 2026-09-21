@@ -139,16 +139,17 @@ export default function CasesList() {
     }
   }, [search, dateFrom, dateTo, statusFilter]);
 
-  useEffect(() => {
-    if (totalPages > 0 && page > totalPages) {
-      setPage(totalPages);
-      try {
-        sessionStorage.setItem("qla_cases_page", String(totalPages));
-      } catch {
-        // ignore
-      }
+useEffect(() => {
+  if (cases === null) return; // data still loading — don't clamp yet
+  if (totalPages > 0 && page > totalPages) {
+    setPage(totalPages);
+    try {
+      sessionStorage.setItem("qla_cases_page", String(totalPages));
+    } catch {
+      // ignore
     }
-  }, [page, totalPages]);
+  }
+}, [cases, page, totalPages]);
 
   const handlePageChange = (newPage) => {
     if (newPage < 1 || newPage > totalPages || newPage === page) return;
