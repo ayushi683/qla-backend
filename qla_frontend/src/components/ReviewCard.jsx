@@ -1,6 +1,7 @@
 import { useState } from "react";
 import { Link, useNavigate } from "react-router-dom";
 import { api } from "../api/client";
+import { otherRecommendations, topRecommendation } from "../utils/recommendations";
 
 function confidenceClass(conf) {
   if (conf === null || conf === undefined) return "conf-none";
@@ -15,14 +16,6 @@ function confidencePercent(conf) {
   return Math.round(parseFloat(conf) * 100);
 }
 
-function topRecommendation(item) {
-  const recs = item.recommendations || [];
-  if (recs.length === 0) return null;
-  const approved = recs.filter((r) => r.is_selected_by_engineer === true);
-  if (approved.length > 0) return approved[0];
-  return [...recs].sort((a, b) => a.rank_no - b.rank_no)[0];
-}
-
 export default function ReviewCard({ item, showCase = false, onChanged }) {
   const navigate = useNavigate();
   const [editing, setEditing] = useState(false);
@@ -32,9 +25,7 @@ export default function ReviewCard({ item, showCase = false, onChanged }) {
   const [error, setError] = useState("");
 
   const topRec = topRecommendation(item);
-  const otherRecs = (item.recommendations || [])
-    .filter((r) => !topRec || r.recommendation_id !== topRec.recommendation_id)
-    .sort((a, b) => a.rank_no - b.rank_no);
+  const otherRecs = otherRecommendations(item, topRec);
 
   function startEdit() {
     setModelCode(topRec?.model_code || "");

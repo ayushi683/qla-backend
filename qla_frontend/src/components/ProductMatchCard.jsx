@@ -1,5 +1,6 @@
 import { useState } from "react";
 import { api } from "../api/client";
+import { otherRecommendations, topRecommendation } from "../utils/recommendations";
 
 function confidenceClass(conf) {
   if (conf === null || conf === undefined) return "conf-none";
@@ -14,27 +15,15 @@ function confidencePercent(conf) {
   return Math.round(parseFloat(conf) * 100);
 }
 
-function topRecommendation(item) {
-  const recs = item.recommendations || [];
-  if (recs.length === 0) return null;
-  const approved = recs.filter((r) => r.is_selected_by_engineer === true);
-  if (approved.length > 0) return approved[0];
-  return [...recs].sort((a, b) => a.rank_no - b.rank_no)[0];
-}
-
 export default function ProductMatchCard({ item, onChanged, onRejected, onQuotationReady }) {
   const [editing, setEditing] = useState(false);
   const [modelCode, setModelCode] = useState("");
   const [rationale, setRationale] = useState("");
   const [error, setError] = useState("");
-
-  const [showAlternatives, setShowAlternatives] = useState(false);
   const [busyGlobal, setBusyGlobal] = useState(false);
 
   const topRec = topRecommendation(item);
-  const otherRecs = (item.recommendations || [])
-    .filter((r) => !topRec || r.recommendation_id !== topRec.recommendation_id)
-    .sort((a, b) => a.rank_no - b.rank_no);
+  const otherRecs = otherRecommendations(item, topRec);
 
   async function runAction(fn) {
     setBusyGlobal(true);
@@ -97,9 +86,12 @@ export default function ProductMatchCard({ item, onChanged, onRejected, onQuotat
     <div className={`modal-product-row ${isRejected ? "is-rejected" : ""}`}>
       <div className="modal-product-icon">📦</div>
       <div className="modal-product-main">
-        <div className="modal-product-title">{item.description || item.customer_tag_no || `Line ${item.line_no}`}</div>
+        <div className="modal-product-title">
+          {item.product_type || item.description || item.customer_tag_no || `Line ${item.line_no}`}
+        </div>
         <div className="modal-product-desc">
-          {item.product_type} {item.qty ? `· Qty ${item.qty} ${item.uom || ""}` : ""}
+          {item.description && item.product_type && item.description !== item.product_type ? `${item.description} · ` : ""}
+          {item.qty ? `Qty ${item.qty} ${item.uom || ""}` : ""}
         </div>
         <div className="modal-product-match-line">
           <code>{topRec.model_code || topRec.family_code || "—"}</code>
@@ -142,14 +134,10 @@ export default function ProductMatchCard({ item, onChanged, onRejected, onQuotat
 
       {otherRecs.length > 0 && (
         <div className="modal-alt-matches">
-          <button
-            type="button"
-            className="disclosure-toggle"
-            onClick={() => setShowAlternatives(!showAlternatives)}
-          >
-            {otherRecs.length} other suggested match{otherRecs.length > 1 ? "es" : ""}
-          </button>
-          {showAlternatives && otherRecs.map((rec) => (
+          <div className="disclosure-toggle" style={{ cursor: "default" }}>
+            {otherRecs.length} other suggested match{otherRecs.length > 1 ? "es" : ""} for this product
+          </div>
+          {otherRecs.map((rec) => (
             <div className="modal-alt-row" key={rec.recommendation_id}>
               <code>{rec.model_code || rec.family_code || "—"}</code>
               <span className={`confidence-badge ${confidenceClass(rec.confidence)}`}>

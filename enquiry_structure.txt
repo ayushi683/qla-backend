@@ -1,0 +1,770 @@
+============================================================
+TABLE: EnqHead
+============================================================
+Columns:
+ EnqHDID(numeric)
+ FYEAR(varchar)
+ PTPLDivision(varchar)
+ EnqNo(numeric)
+ EnqDt(datetime)
+ Su_Code(char)
+ Su_Name(varchar)
+ Su_add1(varchar)
+ Su_add2(varchar)
+ Su_add3(varchar)
+ Su_City(varchar)
+ Su_State(varchar)
+ Su_Phone(varchar)
+ Su_Fax(varchar)
+ Su_Email(varchar)
+ Su_Attn1(varchar)
+ NOTE(varchar)
+ Qtnno(varchar)
+ QtnDt(datetime)
+ Ent_By(varchar)
+ Ent_Date(datetime)
+ Up_by(varchar)
+ Up_Date(datetime)
+
+Sample rows:
+ EnqHDID:11373
+ FYEAR:2526
+ PTPLDivision:None
+ EnqNo:1
+ EnqDt:2025-04-07 00:00:00
+ Su_Code:JM002
+ Su_Name:JMD ENGINEERING
+ Su_add1:S-21, M.I.D.C. INDUSTRIAL AREA,
+ Su_add2:HINGNA ROAD, NAGPUR- 440016
+ Su_add3:
+ Su_City:None
+ Su_State:None
+ Su_Phone:9836645494
+ Su_Fax:None
+ Su_Email:rpj@jmdindia.co.in
+ Su_Attn1:RATNESH JAISWAL
+ NOTE:
+ Qtnno:
+ QtnDt:None
+ Ent_By:KAILASH
+ Ent_Date:2025-04-07 12:32:33.960000
+ Up_by:KAILASH
+ Up_Date:2025-04-08 18:23:24.040000
+--
+ EnqHDID:11374
+ FYEAR:2526
+ PTPLDivision:None
+ EnqNo:2
+ EnqDt:2025-04-08 00:00:00
+ Su_Code:JM002
+ Su_Name:JMD ENGINEERING
+ Su_add1:S-21, M.I.D.C. INDUSTRIAL AREA,
+ Su_add2:HINGNA ROAD, NAGPUR- 440016
+ Su_add3:
+ Su_City:None
+ Su_State:None
+ Su_Phone:9836645494
+ Su_Fax:None
+ Su_Email:rpj@jmdindia.co.in
+ Su_Attn1:RATNESH JAISWAL
+ NOTE:
+ Qtnno:
+ QtnDt:None
+ Ent_By:KAILASH
+ Ent_Date:2025-04-08 10:05:12.250000
+ Up_by:KAILASH
+ Up_Date:2025-06-03 17:18:44.410000
+--
+
+
+============================================================
+TABLE: EnqDtl
+============================================================
+Columns:
+ ENQID(numeric)
+ FYEAR(varchar)
+ PTPLDivision(varchar)
+ EnqNo(numeric)
+ EnqDt(datetime)
+ Su_Code(varchar)
+ SU_NAME(varchar)
+ SRN(numeric)
+ IT_LNK(numeric)
+ It_Name(varchar)
+ Qty(varchar)
+ Rate(numeric)
+
+Sample rows:
+ ENQID:63844
+ FYEAR:2526
+ PTPLDivision:None
+ EnqNo:1
+ EnqDt:2025-04-07 00:00:00
+ Su_Code:JM002
+ SU_NAME:JMD ENGINEERING
+ SRN:1
+ IT_LNK:11279
+ It_Name:GLOBE VALVE A-105 1/2" NPT(F) BOLTED BONNET 800# WITH 3.1 T.C
+ Qty:300 NOS
+ Rate:655.00
+--
+ ENQID:63845
+ FYEAR:2526
+ PTPLDivision:None
+ EnqNo:5
+ EnqDt:2025-04-09 00:00:00
+ Su_Code:JM002
+ SU_NAME:JMD ENGINEERING
+ SRN:1
+ IT_LNK:24322
+ It_Name:END BLOCK ( BOLTED BONNET ) IBR  A-105 - DRAIN (M/CING) DRG.NO-04C168 REV:-02 (T.M)
+ Qty:600 NOS
+ Rate:0.00
+--
+
+
+============================================================
+TABLE: MSTCUST
+============================================================
+Columns:
+ CU_CODE(varchar)
+ CADD_DT(datetime)
+ CU_TYPE(varchar)
+ ENGCODE(varchar)
+ CU_NAME(varchar)
+ TRMNAME(varchar)
+ TalyCu_Name(varchar)
+ CU_ADD1(varchar)
+ CU_ADD2(varchar)
+ CU_ADD3(varchar)
+ CU_CITY(varchar)
+ CU_STATE(varchar)
+ CU_PIN(varchar)
+ CU_COUNTRY(varchar)
+ CU_PHONE(varchar)
+ CU_FAX(varchar)
+ CU_EMAIL(varchar)
+ INDUSTRY(varchar)
+ VENDOR(varchar)
+ CU_ATTN1(varchar)
+ CU_CONT1(varchar)
+ CU_ATTN2(varchar)
+ CU_CONT2(varchar)
+ CU_ATTN3(varchar)
+ CU_CONT3(varchar)
+ CU_ATTN4(varchar)
+ CU_CONT4(varchar)
+ CU_ATTN5(varchar)
+ CU_CONT5(varchar)
+ CU_Email1(varchar)
+ CU_Email2(varchar)
+ CU_Email3(varchar)
+ CU_Email4(varchar)
+ CU_Email5(varchar)
+ PAYMENT(varchar)
+ CreditDays(numeric)
+ VatTin(varchar)
+ CstTin(varchar)
+ GstNo(varchar)
+ EccNo(varchar)
+ PanNo(varchar)
+ EXCRANGE(varchar)
+ EXCDIVI(varchar)
+ EXCCOMM(varchar)
+ DISC_Per(numeric)
+ INSU_PER(numeric)
+ PF_Per(numeric)
+ FREIGHTType(varchar)
+ BA_NAME(varchar)
+ BA_ADD1(varchar)
+ BA_ADD2(varchar)
+ BA_ADD3(varchar)
+ BA_ACCNO(varchar)
+ STAXTYPE(varchar)
+ STAXPER(numeric)
+ STAXFORM(varchar)
+ TCSYN(varchar)
+ TCSPer(numeric)
+ IGSTPer(numeric)
+ SGSTPer(numeric)
+ CGSTPer(numeric)
+ W_NAME11(varchar)
+ W_ADD11(varchar)
+ W_ADD12(varchar)
+ W_ADD13(varchar)
+ W_CITY1(varchar)
+ W_PHONE1(varchar)
+ W_NAME21(varchar)
+ W_ADD21(varchar)
+ W_ADD22(varchar)
+ W_ADD23(varchar)
+ W_CITY2(varchar)
+ W_PHONE2(varchar)
+ WO_Instruc(varchar)
+ DSP_Instruc(varchar)
+ NOTE(varchar)
+ PURCHASE(varchar)
+ DIVISION(varchar)
+ CATEGORY_ABC(varchar)
+ QTNTYPE(varchar)
+ PRINTCC(varchar)
+ GrpCode(varchar)
+ LASTWO(numeric)
+ WODT(datetime)
+ NoQtn(varchar)
+ NoQtnRemk(varchar)
+ NoQtnBy(varchar)
+ NoOrd(varchar)
+ NoOrdRemk(varchar)
+ NoOrdBy(varchar)
+ NoInv(varchar)
+ NoInvRemk(varchar)
+ NoInvBy(varchar)
+ ContCode(varchar)
+ amt1(numeric)
+ amt2(numeric)
+ amt3(numeric)
+ amt(numeric)
+ QtnNos(numeric)
+ ActiveYN(varchar)
+ ActRen(varchar)
+ ActRemk(varchar)
+ ActEntBy(varchar)
+ ActEntDate(datetime)
+ ENT_BY(varchar)
+ UP_DATE(datetime)
+ UPDTBY(varchar)
+
+Sample rows:
+ CU_CODE:"0001
+ CADD_DT:2024-01-03 00:00:00
+ CU_TYPE:END USER
+ ENGCODE:S-8 
+ CU_NAME:UNIQUE PHARMACEUTICAL LABORATORIES
+ TRMNAME:UNIQUEPHARMACEUTICALLABORATORIES
+ TalyCu_Name:None
+ CU_ADD1:
+(J B CHEMICALS & PHARMACEUTICALS)
+ CU_ADD2:SURVEY NO. 101/2 & 102/1 DAMAN INDUSTRIAL ESTATE,
+ CU_ADD3:BHIMPORE, NANI-DAMAN, DADRA AND NAGAR HAVELI
+ CU_CITY:NANI-DAMAN
+ CU_STATE:DAMAN
+ CU_PIN:
+ CU_COUNTRY:-
+ CU_PHONE:
+ CU_FAX:None
+ CU_EMAIL:
+ INDUSTRY:PHARMA & DRUG
+ VENDOR:None
+ CU_ATTN1:MR VIVEK SONAR- MANAGE MAINTENANCE
+ CU_CONT1:9879108696 / 0260-6655300
+ CU_ATTN2:
+ CU_CONT2:
+ CU_ATTN3:
+ CU_CONT3:
+ CU_ATTN4:
+ CU_CONT4:
+ CU_ATTN5:
+ CU_CONT5:
+ CU_Email1:
+ CU_Email2:
+ CU_Email3:
+ CU_Email4:
+ CU_Email5:
+ PAYMENT:None
+ CreditDays:None
+ VatTin:None
+ CstTin:None
+ GstNo:None
+ EccNo:None
+ PanNo:None
+ EXCRANGE:None
+ EXCDIVI:None
+ EXCCOMM:None
+ DISC_Per:None
+ INSU_PER:None
+ PF_Per:None
+ FREIGHTType:None
+ BA_NAME:None
+ BA_ADD1:None
+ BA_ADD2:None
+ BA_ADD3:None
+ BA_ACCNO:None
+ STAXTYPE:None
+ STAXPER:None
+ STAXFORM:None
+ TCSYN:N
+ TCSPer:0.00
+ IGSTPer:None
+ SGSTPer:None
+ CGSTPer:None
+ W_NAME11:
+ W_ADD11:
+ W_ADD12:
+ W_ADD13:
+ W_CITY1:
+ W_PHONE1:
+ W_NAME21:
+ W_ADD21:
+ W_ADD22:
+ W_ADD23:
+ W_CITY2:
+ W_PHONE2:
+ WO_Instruc:None
+ DSP_Instruc:None
+ NOTE:None
+ PURCHASE:None
+ DIVISION:None
+ CATEGORY_ABC:None
+ QTNTYPE:None
+ PRINTCC:Y
+ GrpCode:None
+ LASTWO:0
+ WODT:None
+ NoQtn:None
+ NoQtnRemk:None
+ NoQtnBy:None
+ NoOrd:None
+ NoOrdRemk:None
+ NoOrdBy:None
+ NoInv:None
+ NoInvRemk:None
+ NoInvBy:None
+ ContCode:None
+ amt1:0
+ amt2:0
+ amt3:0
+ amt:0
+ QtnNos:0
+ ActiveYN:Y
+ ActRen:None
+ ActRemk:None
+ ActEntBy:None
+ ActEntDate:None
+ ENT_BY:SATISH
+ UP_DATE:2024-01-03 16:49:51.823000
+ UPDTBY:SATISH  Updated on  03/Jan/24 04:49
+--
+ CU_CODE:00610
+ CADD_DT:2024-04-01 00:00:00
+ CU_TYPE:OT
+ ENGCODE:S-99
+ CU_NAME:METITO (OVERSEAS) QATAR  WLL
+ TRMNAME:METITOOVERSEASQATARWLL
+ TalyCu_Name:None
+ CU_ADD1:D RING ROAD, AL HILAL, BLDG NO. 37
+ CU_ADD2:P.O BOX 23616, DOHA, QATAR
+ CU_ADD3:  
+ CU_CITY:
+ CU_STATE:
+ CU_PIN:
+ CU_COUNTRY:QATAR
+ CU_PHONE:None
+ CU_FAX:None
+ CU_EMAIL:Jane.Tolentino@metito.com
+ INDUSTRY:EPC (ENGG, PROC & CONST)
+ VENDOR:None
+ CU_ATTN1:Ms. Jane Tolentino
+ CU_CONT1:None
+ CU_ATTN2:None
+ CU_CONT2:None
+ CU_ATTN3:None
+ CU_CONT3:None
+ CU_ATTN4:None
+ CU_CONT4:None
+ CU_ATTN5:None
+ CU_CONT5:None
+ CU_Email1:None
+ CU_Email2:None
+ CU_Email3:None
+ CU_Email4:None
+ CU_Email5:None
+ PAYMENT:None
+ CreditDays:0
+ VatTin:None
+ CstTin:None
+ GstNo:
+ EccNo:None
+ PanNo:
+ EXCRANGE:None
+ EXCDIVI:None
+ EXCCOMM:None
+ DISC_Per:None
+ INSU_PER:None
+ PF_Per:None
+ FREIGHTType:None
+ BA_NAME:None
+ BA_ADD1:None
+ BA_ADD2:None
+ BA_ADD3:None
+ BA_ACCNO:None
+ STAXTYPE:None
+ STAXPER:None
+ STAXFORM:None
+ TCSYN:N
+ TCSPer:0.00
+ IGSTPer:0.00
+ SGSTPer:0.00
+ CGSTPer:0.00
+ W_NAME11:None
+ W_ADD11:None
+ W_ADD12:None
+ W_ADD13:None
+ W_CITY1:None
+ W_PHONE1:None
+ W_NAME21:None
+ W_ADD21:None
+ W_ADD22:None
+ W_ADD23:None
+ W_CITY2:None
+ W_PHONE2:None
+ WO_Instruc:None
+ DSP_Instruc:None
+ NOTE:None
+ PURCHASE:None
+ DIVISION:None
+ CATEGORY_ABC:None
+ QTNTYPE:None
+ PRINTCC:Y
+ GrpCode:None
+ LASTWO:0
+ WODT:None
+ NoQtn:N
+ NoQtnRemk:None
+ NoQtnBy:None
+ NoOrd:N
+ NoOrdRemk:None
+ NoOrdBy:None
+ NoInv:N
+ NoInvRemk:None
+ NoInvBy:None
+ ContCode:None
+ amt1:0
+ amt2:0
+ amt3:0
+ amt:0
+ QtnNos:0
+ ActiveYN:Y
+ ActRen:None
+ ActRemk:None
+ ActEntBy:None
+ ActEntDate:None
+ ENT_BY:BANESH - Imported from SAP
+ UP_DATE:None
+ UPDTBY:None
+--
+
+
+============================================================
+TABLE: QTNHEAD
+============================================================
+Columns:
+ QTNID(numeric)
+ FYEAR(varchar)
+ PTPLDivision(varchar)
+ ExportYN(varchar)
+ MAKE(varchar)
+ QTNNO(numeric)
+ QTNDT(datetime)
+ REVNO(numeric)
+ LastRev(varchar)
+ REVDT(datetime)
+ CU_CODE(varchar)
+ CU_NAME(varchar)
+ CU_ADD1(varchar)
+ CU_ADD2(varchar)
+ CU_ADD3(varchar)
+ CU_CITY(varchar)
+ CU_STATE(varchar)
+ CU_COUNTRY(varchar)
+ CU_PHONE(varchar)
+ CU_FAX(varchar)
+ CU_EMAIL(varchar)
+ VENDOR(varchar)
+ CU_ATTN1(varchar)
+ CU_CONT1(varchar)
+ CU_CELL1(varchar)
+ NONSTD(varchar)
+ Category(varchar)
+ SalesBranch(varchar)
+ NewCustYN(varchar)
+ QTYPE(varchar)
+ ENQNO(varchar)
+ ENQRDT(datetime)
+ ENQDT(datetime)
+ DUEDATE(datetime)
+ PREBY(varchar)
+ PROJECT(varchar)
+ TOTMDL(varchar)
+ TOTQTY(numeric)
+ TOTAMT(numeric)
+ NetAmtRs(numeric)
+ TOTQTYA(numeric)
+ TOTAMTA(numeric)
+ REMARK(varchar)
+ RMKDT(datetime)
+ RMKUPDT(varchar)
+ REMKOLD(varchar)
+ QtnStatus(varchar)
+ STATUS(varchar)
+ PODT(datetime)
+ PORDT(datetime)
+ POAMT(numeric)
+ PORECDYN(varchar)
+ ENGCODE(varchar)
+ ENGNAME(varchar)
+ AG_CODE(numeric)
+ AG_NAME(varchar)
+ SIGN(varchar)
+ DESIG(varchar)
+ QTNWITH(varchar)
+ WTDATE(datetime)
+ Currency(varchar)
+ EXCRATE(numeric)
+ EnqThrou(varchar)
+ days(numeric)
+ PriceB(varchar)
+ PkgFwd(varchar)
+ Freight(varchar)
+ GST(varchar)
+ Deliv(varchar)
+ Payment(varchar)
+ Insp(varchar)
+ TranInsu(varchar)
+ PoCanc(varchar)
+ Docum(varchar)
+ Validity(varchar)
+ Warr(varchar)
+ PkgPer(numeric)
+ PkgAmt(numeric)
+ InsuPer(numeric)
+ InsuAmt(numeric)
+ FreightAmt(numeric)
+ OtherName(varchar)
+ OtherAmt(numeric)
+ IGSTPer(numeric)
+ IGSTAmt(numeric)
+ CGSTPer(numeric)
+ CGSTAmt(numeric)
+ SGSTPer(numeric)
+ SGSTAmt(numeric)
+ TCSPer(numeric)
+ TCSAmt(numeric)
+ RFA(numeric)
+ GrossAmt(numeric)
+ GrossAmtRs(numeric)
+ DataVersion(numeric)
+ ENT_BY(varchar)
+ ENT_DATE(datetime)
+ UP_BY(varchar)
+ UP_DATE(datetime)
+ ENDUSER(varchar)
+ ENDUSERIND(varchar)
+
+Sample rows:
+ QTNID:549177
+ FYEAR:2526
+ PTPLDivision:J-52/7
+ ExportYN:N
+ MAKE:T
+ QTNNO:8145
+ QTNDT:2025-11-04 00:00:00
+ REVNO:0
+ LastRev:N
+ REVDT:None
+ CU_CODE:J0109
+ CU_NAME:JSW STEEL LIMITED..
+ CU_ADD1:DOLVI WORKS- HSM & LCP,
+ CU_ADD2:P.O.-GEETAPURAM, VILLAGE-DOLVI, TALUKA-PEN,
+ CU_ADD3:RAIGAD 402107
+ CU_CITY:RAIGAD
+ CU_STATE:MAHARASHTRA
+ CU_COUNTRY:-
+ CU_PHONE:
+ CU_FAX:
+ CU_EMAIL:srilekha.a@jsw.in
+ VENDOR:
+ CU_ATTN1:SRILEKHA A
+ CU_CONT1:None
+ CU_CELL1:91 6380663189
+ NONSTD:N
+ Category:MRO
+ SalesBranch:-
+ NewCustYN:N
+ QTYPE:W
+ ENQNO:DESIGN AND ENGINEERING, SUPPLY AND SERVICE OF GAUGE AND TRANSMITTERS FOR BOF#3 PHASE#3 PROJECT.
+ ENQRDT:None
+ ENQDT:2025-09-02 00:00:00
+ DUEDATE:None
+ PREBY:MLB
+ PROJECT:
+ TOTMDL:RFG-LMA232221OBB1W1
+ TOTQTY:1
+ TOTAMT:0.00
+ NetAmtRs:0
+ TOTQTYA:0
+ TOTAMTA:0
+ REMARK:BIDDING.
+ RMKDT:2026-03-20 00:00:00
+ RMKUPDT:SATISH - 20/03/2026 12:42:55
+ REMKOLD:None
+ QtnStatus:LV
+ STATUS:
+ PODT:None
+ PORDT:None
+ POAMT:0
+ PORECDYN:N
+ ENGCODE:S-8
+ ENGNAME:None
+ AG_CODE:0
+ AG_NAME:- PTPL (MAH)
+ SIGN:Deepali Patharkar
+ DESIG:Sr. Engr. Cust. Support
+ QTNWITH:None
+ WTDATE:None
+ Currency:Rs
+ EXCRATE:0.0000
+ EnqThrou:-
+ days:63
+ PriceB:
+ PkgFwd:
+ Freight:
+ GST:
+ Deliv:
+ Payment:
+ Insp:
+ TranInsu:
+ PoCanc:
+ Docum:
+ Validity:
+ Warr:
+ PkgPer:0.00
+ PkgAmt:0.00
+ InsuPer:0.00
+ InsuAmt:0.00
+ FreightAmt:0.00
+ OtherName:
+ OtherAmt:0.00
+ IGSTPer:0.00
+ IGSTAmt:0.00
+ CGSTPer:0.00
+ CGSTAmt:0.00
+ SGSTPer:0.00
+ SGSTAmt:0.00
+ TCSPer:0.000
+ TCSAmt:0.00
+ RFA:0.00
+ GrossAmt:0.00
+ GrossAmtRs:0
+ DataVersion:2
+ ENT_BY:BANESH
+ ENT_DATE:2025-09-04 00:00:00
+ UP_BY:BANESH
+ UP_DATE:2025-11-05 12:53:38.653000
+ ENDUSER:None
+ ENDUSERIND:None
+--
+ QTNID:549413
+ FYEAR:2526
+ PTPLDivision:J-52/7
+ ExportYN:N
+ MAKE:T
+ QTNNO:8074
+ QTNDT:2025-11-14 00:00:00
+ REVNO:0
+ LastRev:Y
+ REVDT:None
+ CU_CODE:C1754
+ CU_NAME:PUGAATT AUTOMATION
+ CU_ADD1:MISSION ROAD,
+ CU_ADD2:BUXI BAZAR,
+ CU_ADD3:CUTTACK 753001
+ CU_CITY:CUTTACK
+ CU_STATE:ODISHA
+ CU_COUNTRY:-
+ CU_PHONE:
+ CU_FAX:
+ CU_EMAIL:contact@pugaattautomation.com
+ VENDOR:
+ CU_ATTN1:MS. SHUVANI MANDAL
+ CU_CONT1:None
+ CU_CELL1:6370377677
+ NONSTD:
+ Category:MRO
+ SalesBranch:-
+ NewCustYN:N
+ QTYPE:W
+ ENQNO:2509005 - ENQUIRY FOR MAGNETIC LEVEL GAUGE - 01/09/2025
+ ENQRDT:None
+ ENQDT:2025-09-01 00:00:00
+ DUEDATE:None
+ PREBY:DCP
+ PROJECT:
+ TOTMDL:MLG-SNAS2ABW2A2ACEWAWWWW
+ TOTQTY:2
+ TOTAMT:33780.00
+ NetAmtRs:0
+ TOTQTYA:0
+ TOTAMTA:0
+ REMARK:*
+ RMKDT:2025-10-10 00:00:00
+ RMKUPDT:DEEPALI - 10/10/2025 10:43:15 AM
+ REMKOLD:None
+ QtnStatus:
+ STATUS:
+ PODT:None
+ PORDT:None
+ POAMT:0
+ PORECDYN:N
+ ENGCODE:S-7
+ ENGNAME:None
+ AG_CODE:-2
+ AG_NAME:- PTPL (India)
+ SIGN:Deepali Patharkar
+ DESIG:Sr. Engr. Cust. Support
+ QTNWITH:None
+ WTDATE:None
+ Currency:Rs
+ EXCRATE:0.0000
+ EnqThrou:-
+ days:74
+ PriceB:
+ PkgFwd:
+ Freight:
+ GST:
+ Deliv:
+ Payment:
+ Insp:
+ TranInsu:
+ PoCanc:
+ Docum:
+ Validity:
+ Warr:
+ PkgPer:0.00
+ PkgAmt:0.00
+ InsuPer:0.00
+ InsuAmt:0.00
+ FreightAmt:0.00
+ OtherName:
+ OtherAmt:0.00
+ IGSTPer:0.00
+ IGSTAmt:0.00
+ CGSTPer:0.00
+ CGSTAmt:0.00
+ SGSTPer:0.00
+ SGSTAmt:0.00
+ TCSPer:0.000
+ TCSAmt:0.00
+ RFA:0.00
+ GrossAmt:33780.00
+ GrossAmtRs:0
+ DataVersion:1
+ ENT_BY:BANESH
+ ENT_DATE:2025-09-04 00:00:00
+ UP_BY:BANESH
+ UP_DATE:2025-11-15 12:46:44.787000
+ ENDUSER:None
+ ENDUSERIND:None
+--
+
+

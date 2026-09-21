@@ -100,6 +100,8 @@ class DocumentOut(BaseModel):
     content_type: Optional[str] = None
     size_bytes: Optional[int] = None
     created_at: datetime
+    revision_no: Optional[int] = None
+    revision_tag: Optional[str] = None
 
 
 class IngestMetadata(BaseModel):

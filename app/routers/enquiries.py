@@ -14,14 +14,10 @@ from app.models.inquiry_case import InquiryCase
 from app.models.email import EmailThread, EmailMessage
 from app.models.document import InquiryDocument
 from app.models.party import Party
+from app.enquiry_documents import ENQUIRY_DOCS_DIR, content_type_for, list_related_enquiry_documents, resolve_document_disk_path
 from app.schemas import IngestMetadata, IngestResponse, DocumentOut
 
 router = APIRouter(prefix="/api", tags=["enquiries"])
-
-ENQUIRY_DOCS_DIR = os.path.join(
-    os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__)))),
-    "instance", "enquiry_docs",
-)
 
 
 def _generate_internal_ref() -> str:
@@ -141,7 +137,7 @@ async def ingest_enquiry(
             relative_path=os.path.join("enquiry_docs", str(case.case_id), f.filename),
             blob_uri=os.path.join("enquiry_docs", str(case.case_id), f.filename),
             doc_role="ENQUIRY",
-            content_type=f.content_type,
+            content_type=f.content_type or content_type_for(f.filename),
             size_bytes=len(content),
         )
         db.add(doc)
@@ -163,19 +159,15 @@ def list_case_documents(case_id: int, db: Session = Depends(get_db)):
     case = db.get(InquiryCase, case_id)
     if case is None:
         raise HTTPException(404, "Case not found")
-    docs = db.query(InquiryDocument).filter_by(case_id=case_id).order_by(InquiryDocument.created_at).all()
-    return [DocumentOut.model_validate(d) for d in docs]
+    return list_related_enquiry_documents(db, case)
 
 
 @router.get("/documents/download/{document_id}", dependencies=[Depends(get_current_user)])
 def download_document(document_id: int, db: Session = Depends(get_db)):
     doc = db.get(InquiryDocument, document_id)
-    if doc is None or not doc.blob_uri:
+    if doc is None:
         raise HTTPException(404, "Document not found")
-    full_path = os.path.join(
-        os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__)))),
-        "instance", doc.blob_uri,
-    )
-    if not os.path.isfile(full_path):
+    full_path = resolve_document_disk_path(doc)
+    if not full_path:
         raise HTTPException(404, "File missing on disk")
     return FileResponse(full_path, filename=doc.file_name, media_type=doc.content_type or "application/octet-stream")

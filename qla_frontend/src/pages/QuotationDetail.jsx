@@ -34,11 +34,13 @@ export default function QuotationDetail() {
   }, [caseId]);
 
   async function handleDownload() {
-    if (!data?.quotation?.docx_blob_uri) return;
-    const filename = data.quotation.docx_blob_uri.split("/").pop();
     setDownloading(true);
     try {
-      await api.downloadBlob(`/api/quotations/download/${filename}`, filename);
+      const filename = (data?.quotation?.docx_blob_uri || "quotation.docx")
+        .replaceAll("\\", "/")
+        .split("/")
+        .pop();
+      await api.downloadBlob(`/api/cases/${caseId}/quotation/download`, filename);
     } catch (e) {
       setError(e.message || "Download failed");
     } finally {
@@ -100,7 +102,9 @@ export default function QuotationDetail() {
 
   const { case: caseInfo, quotation, lines, outbound } = data;
   const isGenerated = quotation.status === "GENERATED" && quotation.docx_blob_uri;
-  const filename = quotation.docx_blob_uri ? quotation.docx_blob_uri.split("/").pop() : null;
+  const filename = quotation.docx_blob_uri
+    ? quotation.docx_blob_uri.replaceAll("\\", "/").split("/").pop()
+    : null;
 
   return (
     <div className="page">
@@ -122,7 +126,12 @@ export default function QuotationDetail() {
               <div className="doc-row" key={doc.document_id}>
                 <div className="doc-row-left">
                   <span className="doc-icon">📄</span>
-                  <div className="doc-name">{doc.file_name}</div>
+                  <div>
+                    <div className="doc-name">{doc.file_name}</div>
+                    {doc.revision_tag || doc.revision_no ? (
+                      <div className="doc-meta">{doc.revision_tag || `R${doc.revision_no}`}</div>
+                    ) : null}
+                  </div>
                 </div>
                 <button
                   className="btn btn-small"

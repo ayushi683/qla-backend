@@ -27,6 +27,18 @@ function statusClass(status) {
   return `cases-status-badge cases-status-${(status || "").toLowerCase()}`;
 }
 
+function formatAiResult(result) {
+  const identified = result.items_identified ?? result.items_matched ?? 0;
+  const matched = result.items_matched ?? 0;
+  if (result.needs_details || result.decision === "PRODUCTS_MATCHED_NEED_DETAILS") {
+    return `${identified} product${identified === 1 ? "" : "s"} identified — model details needed`;
+  }
+  if (result.decision === "PRODUCTS_MATCHED") {
+    return `${matched} product${matched === 1 ? "" : "s"} matched`;
+  }
+  return `${result.decision || "done"} (${identified} identified)`;
+}
+
 function confidenceTier(conf) {
   if (conf === null || conf === undefined) return "none";
   const n = parseFloat(conf);
@@ -110,7 +122,8 @@ export default function CasesList() {
   }, [cases, search, dateFrom, dateTo, statusFilter]);
 
   const totalPages = Math.max(1, Math.ceil(filtered.length / PAGE_SIZE));
-  const paginated = filtered.slice((page - 1) * PAGE_SIZE, page * PAGE_SIZE);
+  const safePage = Math.min(page, totalPages);
+  const paginated = filtered.slice((safePage - 1) * PAGE_SIZE, safePage * PAGE_SIZE);
 
   const isFirstRender = useRef(true);
   useEffect(() => {
@@ -170,6 +183,12 @@ export default function CasesList() {
     setDateFrom("");
     setDateTo("");
     setStatusFilter("all");
+    setPage(1);
+    try {
+      sessionStorage.setItem("qla_cases_page", "1");
+    } catch {
+      // ignore
+    }
   }
 
   async function handleRunAiMatch(caseId) {
@@ -408,7 +427,6 @@ export default function CasesList() {
                     <th style={{ width: 130 }}>Status</th>
                     <th style={{ minWidth: 220 }}>Customer & Project</th>
                     <th style={{ width: 130 }}>Received</th>
-                    {/* Hidden for now: <th style={{ width: 150 }}>AI Match Conf.</th> */}
                     <th style={{ width: 200, textAlign: "center" }}>Actions</th>
                   </tr>
                 </thead>
@@ -478,30 +496,7 @@ export default function CasesList() {
                           {formatDate(c.enq_received_at)}
                         </td>
 
-                        {/* 6. AI Match Confidence (Hidden for now)
-                        <td>
-                          {conf !== null && conf !== undefined ? (
-                            <span className={`cases-conf-pill cases-conf-${tier}`}>
-                              <span
-                                className="cases-dot"
-                                style={{
-                                  background:
-                                    tier === "high"
-                                      ? "#10b981"
-                                      : tier === "mid"
-                                      ? "#f59e0b"
-                                      : "#ef4444"
-                                }}
-                              />
-                              {Math.round(parseFloat(conf) * 100)}% Match
-                            </span>
-                          ) : (
-                            <span className="cases-conf-pill cases-conf-none">—</span>
-                          )}
-                        </td>
-                        */}
-
-                        {/* 7. Actions */}
+                        {/* 6. Actions */}
                         <td>
                           <div className="cases-action-group">
                             <Link
@@ -536,7 +531,7 @@ export default function CasesList() {
                               >
                                 {aiResults[c.case_id].status === "error"
                                   ? aiResults[c.case_id].raw_message
-                                  : `${aiResults[c.case_id].decision} (${aiResults[c.case_id].items_matched || 0} matched)`}
+                                  : formatAiResult(aiResults[c.case_id])}
                               </span>
                             </div>
                           )}
@@ -553,8 +548,8 @@ export default function CasesList() {
               <div className="cases-pagination-wrap">
                 <div className="cases-pagination-info">
                   <span>
-                    Showing <span className="cases-pagination-num">{(page - 1) * PAGE_SIZE + 1}</span>–
-                    <span className="cases-pagination-num">{Math.min(page * PAGE_SIZE, filtered.length)}</span> of{" "}
+                    Showing <span className="cases-pagination-num">{(safePage - 1) * PAGE_SIZE + 1}</span>–
+                    <span className="cases-pagination-num">{Math.min(safePage * PAGE_SIZE, filtered.length)}</span> of{" "}
                     <span className="cases-pagination-num">{filtered.length}</span> cases
                   </span>
                   <span className="cases-pagination-badge">15 / page</span>
@@ -566,7 +561,7 @@ export default function CasesList() {
                     <button
                       type="button"
                       className="cases-page-btn cases-page-btn-nav"
-                      disabled={page === 1}
+                      disabled={safePage === 1}
                       onClick={() => handlePageChange(1)}
                       title="First page"
                       aria-label="First page"
@@ -578,8 +573,8 @@ export default function CasesList() {
                     <button
                       type="button"
                       className="cases-page-btn cases-page-btn-nav"
-                      disabled={page === 1}
-                      onClick={() => handlePageChange(page - 1)}
+                      disabled={safePage === 1}
+                      onClick={() => handlePageChange(safePage - 1)}
                       title="Previous page"
                       aria-label="Previous page"
                     >
@@ -588,7 +583,7 @@ export default function CasesList() {
                     </button>
 
                     {/* Page Numbers */}
-                    {getPageNumbers(page, totalPages).map((p, i) =>
+                    {getPageNumbers(safePage, totalPages).map((p, i) =>
                       p === "..." ? (
                         <span key={"dots-" + i} className="cases-pagination-dots">
                           …
@@ -597,9 +592,9 @@ export default function CasesList() {
                         <button
                           key={p}
                           type="button"
-                          className={`cases-page-btn ${p === page ? "active" : ""}`}
+                          className={`cases-page-btn ${p === safePage ? "active" : ""}`}
                           onClick={() => handlePageChange(p)}
-                          aria-current={p === page ? "page" : undefined}
+                          aria-current={p === safePage ? "page" : undefined}
                         >
                           {p}
                         </button>
@@ -610,8 +605,8 @@ export default function CasesList() {
                     <button
                       type="button"
                       className="cases-page-btn cases-page-btn-nav"
-                      disabled={page === totalPages}
-                      onClick={() => handlePageChange(page + 1)}
+                      disabled={safePage === totalPages}
+                      onClick={() => handlePageChange(safePage + 1)}
                       title="Next page"
                       aria-label="Next page"
                     >
@@ -623,7 +618,7 @@ export default function CasesList() {
                     <button
                       type="button"
                       className="cases-page-btn cases-page-btn-nav"
-                      disabled={page === totalPages}
+                      disabled={safePage === totalPages}
                       onClick={() => handlePageChange(totalPages)}
                       title="Last page"
                       aria-label="Last page"
