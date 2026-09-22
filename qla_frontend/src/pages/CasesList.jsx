@@ -537,7 +537,7 @@ export default function CasesList() {
                               <ArrowUpRight size={13} />
                             </Link>
 
-                            {c.status !== "IN_REVIEW" && (
+                            {c.status !== "IN_REVIEW" && c.status !== "QUOTED" && (
                               <button
                                 className="cases-btn-ai"
                                 disabled={aiRunningId === c.case_id || batchRunning}

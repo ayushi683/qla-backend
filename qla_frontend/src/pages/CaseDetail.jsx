@@ -291,12 +291,23 @@ export default function CaseDetail() {
         )}
       </div>
 
-      <div className="detail-tabs">
-        {TABS.map((t) => (
-          <button key={t.key} className={`detail-tab ${tab === t.key ? "active" : ""}`} onClick={() => setTab(t.key)}>
-            {t.label}
-          </button>
-        ))}
+      <div className="detail-tabs" style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
+        <div style={{ display: "flex" }}>
+          {TABS.map((t) => (
+            <button key={t.key} className={`detail-tab ${tab === t.key ? "active" : ""}`} onClick={() => setTab(t.key)}>
+              {t.label}
+            </button>
+          ))}
+        </div>
+        <button
+          className="cases-btn-ai"
+          disabled={matchingBusy}
+          onClick={handleRunAiMatch}
+          title="Run AI technical specification match"
+        >
+          {aiRunning ? <RefreshCw size={13} className="spin" /> : <Play size={13} fill="currentColor" />}
+          {aiRunning ? "Running AI…" : "Run AI"}
+        </button>
       </div>
 
       {/* ---------- OVERVIEW ---------- */}
@@ -311,21 +322,6 @@ export default function CaseDetail() {
           <div className="overview-card" style={{ marginBottom: 20 }}>
             <div className="overview-card-head">
               <h3 className="modal-section-heading" style={{ margin: 0 }}>Case Information</h3>
-              {caseData.status === "RECEIVED" ? (
-                <button
-                  className="cases-btn-ai"
-                  disabled={matchingBusy}
-                  onClick={handleRunAiMatch}
-                  title="Run AI technical specification match"
-                >
-                  {aiRunning ? <RefreshCw size={13} className="spin" /> : <Play size={13} fill="currentColor" />}
-                  {aiRunning ? "Running AI…" : "Run AI"}
-                </button>
-              ) : (
-                <span className="state-pill" style={{ background: "var(--success-tint)", color: "var(--success)" }}>
-                  ✓ Query already run
-                </span>
-              )}
             </div>
             {aiError && <div className="flash flash-error" style={{ marginBottom: 12 }}>{aiError}</div>}
             {aiMessage && !aiError && (
@@ -424,20 +420,6 @@ export default function CaseDetail() {
           )}
           <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 12 }}>
             <p className="page-sub" style={{ margin: 0 }}>{itemsToReview} of {caseData.line_items?.length || 0} items need a decision</p>
-            {caseData.status === "RECEIVED" ? (
-              <button
-                className="cases-btn-ai"
-                disabled={matchingBusy}
-                onClick={handleRunAiMatch}
-              >
-                {aiRunning ? <RefreshCw size={13} className="spin" /> : <Play size={13} fill="currentColor" />}
-                {aiRunning ? "Running AI…" : "Run AI"}
-              </button>
-            ) : (
-              <span className="state-pill" style={{ background: "var(--success-tint)", color: "var(--success)" }}>
-                ✓ Query already run
-              </span>
-            )}
           </div>
           {matchingBusy && !caseData.line_items?.length ? (
             <div className="loading-state">Fetching latest match results…</div>
