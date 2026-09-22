@@ -1,315 +1,506 @@
-import { useState, useMemo } from "react";
+import { useState, useMemo, useEffect, useRef } from "react";
 import {
   Search,
   Plus,
   Edit2,
-  Eye,
+  Trash2,
+  Code2,
+  FileText,
+  UploadCloud,
   Check,
   X,
-  BookOpen,
-  Filter,
-  Download,
-  Package,
-  Layers,
-  FileText,
+  Copy,
   CheckCircle2,
+  AlertTriangle,
+  BookOpen,
   SlidersHorizontal,
-  ChevronDown
+  ChevronLeft,
+  ChevronRight,
+  ChevronsLeft,
+  ChevronsRight,
+  Layers,
+  FileJson,
+  RotateCcw,
+  Maximize2,
+  Minimize2,
 } from "lucide-react";
 
-// Mock master catalog initial items
+// ============================================================
+// INITIAL PRODUCT CATALOG DATA (Streamlined 4 core fields)
+// model-code, catalog name, category, datasheet
+// ============================================================
 const INITIAL_CATALOG = [
   {
     id: 1,
     model_code_prefix: "MLS-100",
     display_name: "Magnetic Level Switch - Miniature Top Mounted",
-    brand_owner: "TECHTROL",
     category: "LEVEL",
-    subcategory: "SWITCH",
-    sensing_principle: "Magnetic Float",
-    is_configurable: true,
     doc_code: "DOC-MLS-100",
     source_pdf_name: "techtrol_miniature_level_switch.pdf",
-    is_active: true,
-    base_price: 8500,
-    uom: "NOS",
-    description: "Compact reed switch actuated by magnetic float. Suitable for clean liquids, water treatment tanks, and small vessels.",
   },
   {
     id: 2,
     model_code_prefix: "MLS-200",
     display_name: "Magnetic Level Switch - Side Mounted Heavy Duty",
-    brand_owner: "TECHTROL",
     category: "LEVEL",
-    subcategory: "SWITCH",
-    sensing_principle: "Magnetic Float",
-    is_configurable: true,
     doc_code: "DOC-MLS-200",
     source_pdf_name: "techtrol_side_mounted_mls.pdf",
-    is_active: true,
-    base_price: 14200,
-    uom: "NOS",
-    description: "Heavy duty side-mounted switch with glandless design. Ideal for chemical tanks, fuel storage, and high temperature applications.",
   },
   {
     id: 3,
     model_code_prefix: "TFM-500",
-    display_name: "Tuning Fork Level Switch - Liquids",
-    brand_owner: "TECHTROL",
+    display_name: "Tuning Fork Level Switch - Liquids & Slurries",
     category: "LEVEL",
-    subcategory: "SWITCH",
-    sensing_principle: "Piezoelectric Vibration",
-    is_configurable: true,
     doc_code: "DOC-TFM-500",
     source_pdf_name: "tuning_fork_level_switch.pdf",
-    is_active: true,
-    base_price: 19800,
-    uom: "NOS",
-    description: "Vibrating fork designed for point level detection in turbulent liquids, viscous slurries, and foaming tanks.",
   },
   {
     id: 4,
     model_code_prefix: "UFM-800",
     display_name: "Ultrasonic Flow Meter - Clamp-on Transit Time",
-    brand_owner: "TECHTROL",
     category: "ULTRASONIC",
-    subcategory: "TRANSMITTER",
-    sensing_principle: "Transit Time Ultrasonic",
-    is_configurable: true,
     doc_code: "DOC-UFM-800",
     source_pdf_name: "techtrol_ultrasonic_flowmeter.pdf",
-    is_active: true,
-    base_price: 48000,
-    uom: "SET",
-    description: "Non-invasive clamp-on flow meter for pipes DN15 to DN1000. Features LCD readout, 4-20mA + RS485 Modbus output.",
   },
   {
     id: 5,
     model_code_prefix: "DPT-300",
     display_name: "Differential Pressure Transmitter - Flanged Diaphragm",
-    brand_owner: "TECHTROL",
     category: "PRESSURE",
-    subcategory: "TRANSMITTER",
-    sensing_principle: "Piezoresistive Diaphragm",
-    is_configurable: true,
     doc_code: "DOC-DPT-300",
     source_pdf_name: "techtrol_differential_pressure.pdf",
-    is_active: true,
-    base_price: 36500,
-    uom: "NOS",
-    description: "High accuracy HART compatible differential pressure transmitter for pressurized tanks, filter clogging, and flow orifice.",
   },
   {
     id: 6,
     model_code_prefix: "RDR-900",
-    display_name: "Non-Contact Radar Level Transmitter - 80GHz",
-    brand_owner: "TECHTROL",
+    display_name: "Non-Contact Radar Level Transmitter - 80GHz FMCW",
     category: "LEVEL",
-    subcategory: "TRANSMITTER",
-    sensing_principle: "FMCW Radar 80GHz",
-    is_configurable: true,
     doc_code: "DOC-RDR-900",
     source_pdf_name: "techtrol_80ghz_radar_level.pdf",
-    is_active: true,
-    base_price: 62000,
-    uom: "NOS",
-    description: "Narrow 3-degree beam non-contact radar level sensor for tanks with agitators, condensing vapor, and tall silos up to 30m.",
   },
   {
     id: 7,
     model_code_prefix: "GLS-400",
     display_name: "Reflex / Transparent Glass Level Gauge",
-    brand_owner: "TECHTROL",
     category: "LEVEL",
-    subcategory: "GAUGE",
-    sensing_principle: "Optical Refraction",
-    is_configurable: false,
     doc_code: "DOC-GLS-400",
     source_pdf_name: "techtrol_tubular_reflex_gauge.pdf",
-    is_active: true,
-    base_price: 11500,
-    uom: "NOS",
-    description: "Direct reading sight glass level gauge with borosilicate reflex glass for steam boilers and process vessels.",
   },
   {
     id: 8,
     model_code_prefix: "TT-100",
-    display_name: "Head Mounted Temperature Transmitter Pt100",
-    brand_owner: "TECHTROL",
+    display_name: "Head Mounted Temperature Transmitter Pt100 RTD",
     category: "TEMPERATURE",
-    subcategory: "TRANSMITTER",
-    sensing_principle: "RTD Pt100 3-Wire",
-    is_configurable: false,
     doc_code: "DOC-TT-100",
     source_pdf_name: "techtrol_temperature_transmitter.pdf",
-    is_active: false,
-    base_price: 6800,
-    uom: "NOS",
-    description: "Compact head-mount 4-20mA temperature transmitter for immersion thermowells in industrial process pipelines.",
+  },
+  {
+    id: 9,
+    model_code_prefix: "EMF-600",
+    display_name: "Electromagnetic Flow Meter - PTFE Lined Inline",
+    category: "FLOW",
+    doc_code: "DOC-EMF-600",
+    source_pdf_name: "techtrol_electromagnetic_flowmeter.pdf",
+  },
+  {
+    id: 10,
+    model_code_prefix: "VAM-250",
+    display_name: "Variable Area Flow Meter - Metal Tube Rotameter",
+    category: "FLOW",
+    doc_code: "DOC-VAM-250",
+    source_pdf_name: "techtrol_metal_tube_rotameter.pdf",
+  },
+  {
+    id: 11,
+    model_code_prefix: "ULT-200",
+    display_name: "Ultrasonic Level Transmitter - 2-Wire Compact",
+    category: "ULTRASONIC",
+    doc_code: "DOC-ULT-200",
+    source_pdf_name: "techtrol_ultrasonic_level_tx.pdf",
+  },
+  {
+    id: 12,
+    model_code_prefix: "PT-150",
+    display_name: "Industrial Pressure Transmitter - Ceramic Sensor",
+    category: "PRESSURE",
+    doc_code: "DOC-PT-150",
+    source_pdf_name: "techtrol_pressure_transmitter.pdf",
+  },
+  {
+    id: 13,
+    model_code_prefix: "TC-500",
+    display_name: "Thermocouple Assembly Type K with Thermowell",
+    category: "TEMPERATURE",
+    doc_code: "DOC-TC-500",
+    source_pdf_name: "techtrol_thermocouple_assembly.pdf",
+  },
+  {
+    id: 14,
+    model_code_prefix: "CLT-700",
+    display_name: "Capacitance Level Transmitter - High Temperature Rod",
+    category: "LEVEL",
+    doc_code: "DOC-CLT-700",
+    source_pdf_name: "techtrol_capacitance_level.pdf",
+  },
+  {
+    id: 15,
+    model_code_prefix: "VFM-450",
+    display_name: "Vortex Flow Meter - Steam & Gas Multivariable",
+    category: "FLOW",
+    doc_code: "DOC-VFM-450",
+    source_pdf_name: "techtrol_vortex_flowmeter.pdf",
+  },
+  {
+    id: 16,
+    model_code_prefix: "MLG-350",
+    display_name: "Magnetic Level Gauge - Top & Side Chamber",
+    category: "LEVEL",
+    doc_code: "DOC-MLG-350",
+    source_pdf_name: "techtrol_magnetic_level_gauge.pdf",
+  },
+  {
+    id: 17,
+    model_code_prefix: "DPS-220",
+    display_name: "Differential Pressure Switch - Explosion Proof",
+    category: "PRESSURE",
+    doc_code: "DOC-DPS-220",
+    source_pdf_name: "techtrol_dp_switch.pdf",
+  },
+  {
+    id: 18,
+    model_code_prefix: "TFI-110",
+    display_name: "Digital Temperature Indicator & Controller",
+    category: "TEMPERATURE",
+    doc_code: "DOC-TFI-110",
+    source_pdf_name: "techtrol_temp_indicator.pdf",
   },
 ];
 
+function getPageNumbers(current, total) {
+  if (total <= 7) {
+    return Array.from({ length: total }, (_, i) => i + 1);
+  }
+  if (current <= 4) {
+    return [1, 2, 3, 4, 5, "...", total];
+  }
+  if (current >= total - 3) {
+    return [1, "...", total - 4, total - 3, total - 2, total - 1, total];
+  }
+  return [1, "...", current - 1, current, current + 1, "...", total];
+}
+
 const STANDARD_CATEGORIES = ["LEVEL", "FLOW", "PRESSURE", "TEMPERATURE", "ULTRASONIC"];
-const STANDARD_SUBCATEGORIES = ["SWITCH", "TRANSMITTER", "GAUGE", "INDICATOR", "ACCESSORY"];
 
 export default function CatalogManagement() {
   const [catalog, setCatalog] = useState(INITIAL_CATALOG);
   const [search, setSearch] = useState("");
-  const [selectedCategory, setSelectedCategory] = useState("ALL");
-  const [statusFilter, setStatusFilter] = useState("ALL"); // ALL, ACTIVE, INACTIVE
-  const [viewItem, setViewItem] = useState(null);
-  const [editItem, setEditItem] = useState(null);
-  const [isNewItem, setIsNewItem] = useState(false);
   const [toast, setToast] = useState(null);
 
-  // Custom manual entry modes for Category & Subcategory
-  const [isCustomCategory, setIsCustomCategory] = useState(false);
-  const [isCustomSubcategory, setIsCustomSubcategory] = useState(false);
+  // Modals state
+  const [editItem, setEditItem] = useState(null); // null or item object being edited
+  const [isNewItem, setIsNewItem] = useState(false);
+  const [deleteConfirmItem, setDeleteConfirmItem] = useState(null); // item to delete
+  const [jsonModalItem, setJsonModalItem] = useState(null); // item whose JSON is open
+  const [jsonText, setJsonText] = useState("");
+  const [jsonError, setJsonError] = useState(null);
+  const [jsonCopied, setJsonCopied] = useState(false);
+  const [isEditFullscreen, setIsEditFullscreen] = useState(false);
+  const [isJsonFullscreen, setIsJsonFullscreen] = useState(false);
 
   // Form State for Add / Edit
   const [formData, setFormData] = useState({
+    id: null,
     model_code_prefix: "",
     display_name: "",
-    brand_owner: "TECHTROL",
     category: "LEVEL",
-    subcategory: "SWITCH",
-    sensing_principle: "",
     doc_code: "",
-    base_price: "",
-    uom: "NOS",
-    is_configurable: true,
-    is_active: true,
-    description: "",
+    source_pdf_name: "",
+    pdf_file_size: null,
+    pdf_url: null,
   });
+
+  const fileInputRef = useRef(null);
 
   function showToast(msg) {
     setToast(msg);
     setTimeout(() => setToast(null), 4000);
   }
 
-  // Dynamic Category list for tabs and filters
-  const allCategories = useMemo(() => {
-    const list = ["ALL", ...STANDARD_CATEGORIES];
-    catalog.forEach((item) => {
-      const cat = (item.category || "").trim().toUpperCase();
-      if (cat && !list.includes(cat)) {
-        list.push(cat);
-      }
-    });
-    return list;
-  }, [catalog]);
-
-  // Unique categories count for KPI
+  // Unique categories count
   const uniqueCategoriesCount = useMemo(() => {
     const set = new Set(catalog.map((c) => (c.category || "").trim().toUpperCase()).filter(Boolean));
     return set.size;
   }, [catalog]);
 
-  // Filtered Catalog items
+  // Filtered Catalog items (Search by Model Code, Catalog Name, Category, or Datasheet)
   const filteredItems = useMemo(() => {
+    if (!search.trim()) return catalog;
+    const q = search.toLowerCase();
     return catalog.filter((item) => {
-      const matchesSearch =
-        item.model_code_prefix.toLowerCase().includes(search.toLowerCase()) ||
-        item.display_name.toLowerCase().includes(search.toLowerCase()) ||
-        (item.sensing_principle && item.sensing_principle.toLowerCase().includes(search.toLowerCase()));
-
-      const matchesCategory =
-        selectedCategory === "ALL" || (item.category || "").toUpperCase() === selectedCategory.toUpperCase();
-
-      const matchesStatus =
-        statusFilter === "ALL" ||
-        (statusFilter === "ACTIVE" && item.is_active) ||
-        (statusFilter === "INACTIVE" && !item.is_active);
-
-      return matchesSearch && matchesCategory && matchesStatus;
+      return (
+        (item.model_code_prefix || "").toLowerCase().includes(q) ||
+        (item.display_name || "").toLowerCase().includes(q) ||
+        (item.category || "").toLowerCase().includes(q) ||
+        (item.doc_code || "").toLowerCase().includes(q) ||
+        (item.source_pdf_name || "").toLowerCase().includes(q)
+      );
     });
-  }, [catalog, search, selectedCategory, statusFilter]);
+  }, [catalog, search]);
 
+  // Pagination (15 per page)
+  const [page, setPage] = useState(1);
+  const [pageSize, setPageSize] = useState(15);
+  const [jumpPage, setJumpPage] = useState("");
+
+  useEffect(() => {
+    setPage(1);
+  }, [search]);
+
+  const totalPages = Math.max(1, Math.ceil(filteredItems.length / pageSize));
+  const paginatedItems = useMemo(() => {
+    const start = (page - 1) * pageSize;
+    return filteredItems.slice(start, start + pageSize);
+  }, [filteredItems, page, pageSize]);
+
+  const handlePageChange = (newPage) => {
+    if (newPage < 1 || newPage > totalPages || newPage === page) return;
+    setPage(newPage);
+  };
+
+  const handleJumpSubmit = (e) => {
+    e.preventDefault();
+    const target = parseInt(jumpPage, 10);
+    if (!isNaN(target) && target >= 1 && target <= totalPages) {
+      setPage(target);
+      setJumpPage("");
+    }
+  };
+
+  // -------------------------------------------------------------
+  // Add & Edit Handlers
+  // -------------------------------------------------------------
   function handleOpenAdd() {
     setIsNewItem(true);
-    setIsCustomCategory(false);
-    setIsCustomSubcategory(false);
+    setIsEditFullscreen(false);
     setFormData({
+      id: Date.now(),
       model_code_prefix: "",
       display_name: "",
-      brand_owner: "TECHTROL",
       category: "LEVEL",
-      subcategory: "SWITCH",
-      sensing_principle: "",
       doc_code: "",
-      base_price: "",
-      uom: "NOS",
-      is_configurable: true,
-      is_active: true,
-      description: "",
+      source_pdf_name: "",
+      pdf_file_size: null,
+      pdf_url: null,
     });
-    setEditItem(true);
+    setEditItem({});
   }
 
   function handleOpenEdit(item) {
     setIsNewItem(false);
-    const catIsCustom = !STANDARD_CATEGORIES.includes((item.category || "").toUpperCase());
-    const subIsCustom = !STANDARD_SUBCATEGORIES.includes((item.subcategory || "").toUpperCase());
-    setIsCustomCategory(catIsCustom);
-    setIsCustomSubcategory(subIsCustom);
+    setIsEditFullscreen(false);
     setFormData({
       id: item.id,
-      model_code_prefix: item.model_code_prefix,
-      display_name: item.display_name,
-      brand_owner: item.brand_owner || "TECHTROL",
+      model_code_prefix: item.model_code_prefix || "",
+      display_name: item.display_name || "",
       category: item.category || "LEVEL",
-      subcategory: item.subcategory || "SWITCH",
-      sensing_principle: item.sensing_principle || "",
       doc_code: item.doc_code || "",
-      base_price: item.base_price || "",
-      uom: item.uom || "NOS",
-      is_configurable: item.is_configurable ?? true,
-      is_active: item.is_active ?? true,
-      description: item.description || "",
+      source_pdf_name: item.source_pdf_name || "",
+      pdf_file_size: item.pdf_file_size || null,
+      pdf_url: item.pdf_url || null,
     });
     setEditItem(item);
   }
 
   function handleSaveForm(e) {
     e.preventDefault();
-    const finalCategory = (formData.category || "GENERAL").trim().toUpperCase();
-    const finalSubcategory = (formData.subcategory || "GENERAL").trim().toUpperCase();
+    const cleanPrefix = (formData.model_code_prefix || "").trim().toUpperCase();
+    const cleanName = (formData.display_name || "").trim();
+    const cleanCategory = (formData.category || "GENERAL").trim().toUpperCase();
+
+    if (!cleanPrefix) {
+      showToast("Model Code is required");
+      return;
+    }
+    if (!cleanName) {
+      showToast("Catalog Name is required");
+      return;
+    }
+
+    const finalDocCode =
+      formData.doc_code.trim() ||
+      (formData.source_pdf_name ? `DOC-${cleanPrefix}` : "");
+
     if (isNewItem) {
       const newItem = {
-        ...formData,
-        category: finalCategory,
-        subcategory: finalSubcategory,
         id: Date.now(),
-        base_price: Number(formData.base_price) || 0,
+        model_code_prefix: cleanPrefix,
+        display_name: cleanName,
+        category: cleanCategory,
+        doc_code: finalDocCode,
+        source_pdf_name: formData.source_pdf_name || "",
+        pdf_file_size: formData.pdf_file_size || null,
+        pdf_url: formData.pdf_url || null,
       };
       setCatalog([newItem, ...catalog]);
-      showToast(`Model ${formData.model_code_prefix} created successfully`);
+      showToast(`Model ${cleanPrefix} added to catalog`);
     } else {
-      setCatalog(
-        catalog.map((c) =>
+      setCatalog((prev) =>
+        prev.map((c) =>
           c.id === formData.id
-            ? { ...formData, category: finalCategory, subcategory: finalSubcategory, base_price: Number(formData.base_price) || 0 }
+            ? {
+                ...c,
+                model_code_prefix: cleanPrefix,
+                display_name: cleanName,
+                category: cleanCategory,
+                doc_code: finalDocCode,
+                source_pdf_name: formData.source_pdf_name || "",
+                pdf_file_size: formData.pdf_file_size || null,
+                pdf_url: formData.pdf_url || null,
+              }
             : c
         )
       );
-      showToast(`Model ${formData.model_code_prefix} updated successfully`);
+      showToast(`Model ${cleanPrefix} updated successfully`);
     }
     setEditItem(null);
   }
 
-  function handleToggleActive(id) {
-    setCatalog(
-      catalog.map((c) => (c.id === id ? { ...c, is_active: !c.is_active } : c))
-    );
-    const item = catalog.find((c) => c.id === id);
-    showToast(
-      `Product ${item?.model_code_prefix} is now ${item?.is_active ? "Inactive" : "Active"}`
-    );
+  // -------------------------------------------------------------
+  // PDF File Upload Handler
+  // -------------------------------------------------------------
+  function handlePdfFileSelect(e) {
+    const file = e.target.files?.[0];
+    if (!file) return;
+
+    if (file.type !== "application/pdf" && !file.name.toLowerCase().endsWith(".pdf")) {
+      showToast("Please select a valid PDF file.");
+      return;
+    }
+
+    const fileSizeStr =
+      file.size < 1024 * 1024
+        ? `${(file.size / 1024).toFixed(1)} KB`
+        : `${(file.size / (1024 * 1024)).toFixed(1)} MB`;
+
+    const objectUrl = URL.createObjectURL(file);
+
+    setFormData((prev) => ({
+      ...prev,
+      source_pdf_name: file.name,
+      doc_code: prev.doc_code || `DOC-${(prev.model_code_prefix || "MODEL").toUpperCase()}`,
+      pdf_file_size: fileSizeStr,
+      pdf_url: objectUrl,
+    }));
+
+    showToast(`PDF "${file.name}" attached successfully`);
+  }
+
+  function handleRemovePdf() {
+    setFormData((prev) => ({
+      ...prev,
+      source_pdf_name: "",
+      doc_code: "",
+      pdf_file_size: null,
+      pdf_url: null,
+    }));
+    if (fileInputRef.current) {
+      fileInputRef.current.value = "";
+    }
+  }
+
+  // -------------------------------------------------------------
+  // Delete Handler
+  // -------------------------------------------------------------
+  function handleDeleteConfirm() {
+    if (!deleteConfirmItem) return;
+    const prefix = deleteConfirmItem.model_code_prefix;
+    setCatalog((prev) => prev.filter((item) => item.id !== deleteConfirmItem.id));
+    showToast(`Deleted ${prefix} from catalog`);
+    setDeleteConfirmItem(null);
+  }
+
+  // -------------------------------------------------------------
+  // JSON Viewer & Editor Handlers
+  // -------------------------------------------------------------
+  function handleOpenJson(item) {
+    const exportObject = {
+      id: item.id,
+      model_code_prefix: item.model_code_prefix,
+      display_name: item.display_name,
+      category: item.category,
+      doc_code: item.doc_code || `DOC-${item.model_code_prefix}`,
+      source_pdf_name: item.source_pdf_name || `${item.model_code_prefix.toLowerCase()}_datasheet.pdf`,
+    };
+    setJsonModalItem(item);
+    setJsonText(JSON.stringify(exportObject, null, 2));
+    setJsonError(null);
+    setJsonCopied(false);
+    setIsJsonFullscreen(false);
+  }
+
+  function handleJsonTextChange(val) {
+    setJsonText(val);
+    try {
+      JSON.parse(val);
+      setJsonError(null);
+    } catch (err) {
+      setJsonError(err.message);
+    }
+  }
+
+  function handleFormatJson() {
+    try {
+      const parsed = JSON.parse(jsonText);
+      setJsonText(JSON.stringify(parsed, null, 2));
+      setJsonError(null);
+      showToast("JSON formatted with 2-space indentation");
+    } catch (err) {
+      setJsonError(err.message);
+    }
+  }
+
+  function handleCopyJson() {
+    navigator.clipboard.writeText(jsonText);
+    setJsonCopied(true);
+    showToast("JSON copied to clipboard!");
+    setTimeout(() => setJsonCopied(false), 2000);
+  }
+
+  function handleSaveJson() {
+    try {
+      const parsed = JSON.parse(jsonText);
+      if (!parsed.model_code_prefix || !parsed.display_name) {
+        setJsonError("Both 'model_code_prefix' and 'display_name' are required fields.");
+        return;
+      }
+
+      setCatalog((prev) =>
+        prev.map((c) =>
+          c.id === jsonModalItem.id
+            ? {
+                ...c,
+                ...parsed,
+                id: c.id, // maintain primary key
+                model_code_prefix: String(parsed.model_code_prefix).trim().toUpperCase(),
+                display_name: String(parsed.display_name).trim(),
+                category: String(parsed.category || c.category).trim().toUpperCase(),
+                doc_code: String(parsed.doc_code || c.doc_code || ""),
+                source_pdf_name: String(parsed.source_pdf_name || c.source_pdf_name || ""),
+              }
+            : c
+        )
+      );
+
+      showToast(`JSON updated for ${parsed.model_code_prefix}`);
+      setJsonModalItem(null);
+    } catch (err) {
+      setJsonError(`Invalid JSON: ${err.message}`);
+    }
   }
 
   return (
     <div className="page catalog-master-page">
-      {/* Toast */}
+      {/* Toast Notification */}
       {toast && (
         <div className="toast-notif">
           <CheckCircle2 size={16} className="toast-icon" style={{ color: "var(--brand)" }} />
@@ -320,29 +511,25 @@ export default function CatalogManagement() {
         </div>
       )}
 
-      {/* 1. Header */}
+      {/* 1. Page Header */}
       <div className="catalog-header">
         <div>
           <div className="catalog-title-row">
             <h1 className="page-title" style={{ margin: 0 }}>Product Catalog Master</h1>
             <span className="catalog-badge">
               <BookOpen size={13} />
-              {catalog.length} Models Registered
+              {catalog.length} Products
             </span>
           </div>
           <p className="page-sub" style={{ marginTop: 4 }}>
-            Maintain model code prefixes, sensing principles, technical descriptions, and base catalog pricing.
+            Manage catalog product specifications, categories, attached datasheets, and raw JSON.
           </p>
         </div>
 
         <div className="catalog-header-actions">
-          <button type="button" className="btn btn-outline" onClick={() => showToast("Exporting catalog CSV…")}>
-            <Download size={14} />
-            <span>Export CSV</span>
-          </button>
           <button type="button" className="btn btn-approve" onClick={handleOpenAdd}>
-            <Plus size={15} />
-            <span>Add Model</span>
+            <Plus size={16} />
+            <span>Add Catalog</span>
           </button>
         </div>
       </div>
@@ -351,11 +538,11 @@ export default function CatalogManagement() {
       <div className="catalog-kpi-grid">
         <div className="catalog-kpi-card">
           <div className="catalog-kpi-icon catalog-kpi-icon-brand">
-            <Package size={18} />
+            <BookOpen size={18} />
           </div>
           <div>
-            <div className="catalog-kpi-val">{catalog.filter((c) => c.is_active).length}</div>
-            <div className="catalog-kpi-label">Active Models</div>
+            <div className="catalog-kpi-val">{catalog.length}</div>
+            <div className="catalog-kpi-label">Total Catalog Models</div>
           </div>
         </div>
 
@@ -371,33 +558,25 @@ export default function CatalogManagement() {
 
         <div className="catalog-kpi-card">
           <div className="catalog-kpi-icon catalog-kpi-icon-blue">
-            <SlidersHorizontal size={18} />
-          </div>
-          <div>
-            <div className="catalog-kpi-val">{catalog.filter((c) => c.is_configurable).length}</div>
-            <div className="catalog-kpi-label">Configurable Series</div>
-          </div>
-        </div>
-
-        <div className="catalog-kpi-card">
-          <div className="catalog-kpi-icon catalog-kpi-icon-slate">
             <FileText size={18} />
           </div>
           <div>
-            <div className="catalog-kpi-val">{catalog.filter((c) => c.doc_code).length}</div>
+            <div className="catalog-kpi-val">
+              {catalog.filter((c) => c.source_pdf_name || c.doc_code).length}
+            </div>
             <div className="catalog-kpi-label">Datasheets Attached</div>
           </div>
         </div>
       </div>
 
-      {/* 3. Search & Filter Bar */}
+      {/* 3. Search Bar */}
       <div className="catalog-filter-bar">
-        <div className="cases-search-wrapper" style={{ maxWidth: 360 }}>
+        <div className="cases-search-wrapper" style={{ maxWidth: 420 }}>
           <Search size={15} className="cases-search-icon" />
           <input
             type="text"
             className="cases-search-input"
-            placeholder="Search by prefix, model name, or sensing principle…"
+            placeholder="Search by Model Code, Catalog Name, Category, or Datasheet…"
             value={search}
             onChange={(e) => setSearch(e.target.value)}
           />
@@ -411,114 +590,98 @@ export default function CatalogManagement() {
             </button>
           )}
         </div>
-
-        <div className="catalog-category-tabs">
-          {allCategories.map((cat) => (
-            <button
-              type="button"
-              key={cat}
-              className={`catalog-cat-pill ${selectedCategory === cat ? "active" : ""}`}
-              onClick={() => setSelectedCategory(cat)}
-            >
-              {cat}
-            </button>
-          ))}
-        </div>
-
-        <select
-          className="status-filter-select"
-          value={statusFilter}
-          onChange={(e) => setStatusFilter(e.target.value)}
-          style={{ width: "auto" }}
-        >
-          <option value="ALL">Status: All</option>
-          <option value="ACTIVE">Status: Active only</option>
-          <option value="INACTIVE">Status: Inactive only</option>
-        </select>
       </div>
 
-      {/* 4. Products Table */}
-      <div className="catalog-table-card">
-        <div className="review-table-scroll">
-          <table className="review-modern-table">
+      {/* 4. Products Table (Strictly 4 core columns + Actions) */}
+      <div className="cases-table-card">
+        <div className="cases-table-responsive">
+          <table className="cases-modern-table">
             <thead>
               <tr>
-                <th>Model Code</th>
-                <th>Display Name</th>
-                <th>Category / Subcategory</th>
-                <th>Sensing Principle</th>
-                <th>Base Price</th>
-                <th>Datasheet</th>
-                <th>Status</th>
-                <th style={{ textAlign: "right" }}>Actions</th>
+                <th style={{ width: "160px" }}>Model Code</th>
+                <th>Catalog Name</th>
+                <th style={{ width: "160px" }}>Category</th>
+                <th style={{ width: "240px" }}>Datasheet</th>
+                <th style={{ textAlign: "right", width: "190px" }}>Actions</th>
               </tr>
             </thead>
             <tbody>
-              {filteredItems.length > 0 ? (
-                filteredItems.map((item) => (
+              {paginatedItems.length > 0 ? (
+                paginatedItems.map((item) => (
                   <tr key={item.id} className="catalog-table-row">
+                    {/* 1. Model Code */}
                     <td>
                       <span className="catalog-model-badge">{item.model_code_prefix}</span>
                     </td>
+
+                    {/* 2. Catalog Name */}
                     <td>
-                      <div className="catalog-name-cell">
-                        <span className="catalog-display-name">{item.display_name}</span>
-                        <span className="catalog-brand-owner">{item.brand_owner}</span>
-                      </div>
-                    </td>
-                    <td>
-                      <div style={{ display: "flex", gap: 5, flexWrap: "wrap" }}>
-                        <span className="review-category-badge">{item.category}</span>
-                        <span className="catalog-subcat-badge">{item.subcategory}</span>
-                      </div>
-                    </td>
-                    <td>
-                      <span className="catalog-principle-text">{item.sensing_principle || "—"}</span>
-                    </td>
-                    <td>
-                      <span className="catalog-price-tag">
-                        ₹{item.base_price.toLocaleString("en-IN")}
-                        <span className="catalog-uom"> / {item.uom}</span>
+                      <span className="catalog-display-name" style={{ fontWeight: 600, color: "var(--ink)" }}>
+                        {item.display_name}
                       </span>
                     </td>
+
+                    {/* 3. Category */}
                     <td>
-                      {item.doc_code ? (
-                        <span className="catalog-doc-badge" title={item.source_pdf_name}>
-                          <FileText size={12} />
-                          {item.doc_code}
-                        </span>
+                      <span className="review-category-badge">{item.category}</span>
+                    </td>
+
+                    {/* 4. Datasheet */}
+                    <td>
+                      {item.source_pdf_name || item.doc_code ? (
+                        <div
+                          className="catalog-doc-badge"
+                          title={item.source_pdf_name || item.doc_code}
+                          style={{
+                            cursor: item.pdf_url ? "pointer" : "default",
+                          }}
+                          onClick={() => {
+                            if (item.pdf_url) window.open(item.pdf_url, "_blank");
+                          }}
+                        >
+                          <FileText size={13} style={{ color: "#e11d48", flexShrink: 0 }} />
+                          <span style={{ overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
+                            {item.source_pdf_name || item.doc_code}
+                          </span>
+                        </div>
                       ) : (
-                        <span style={{ color: "var(--muted)" }}>—</span>
+                        <span style={{ color: "var(--muted)", fontSize: "0.82rem" }}>— No PDF —</span>
                       )}
                     </td>
-                    <td>
-                      <button
-                        type="button"
-                        className={`catalog-status-toggle ${item.is_active ? "is-active" : "is-inactive"}`}
-                        onClick={() => handleToggleActive(item.id)}
-                        title="Click to toggle active status"
-                      >
-                        <span className="catalog-status-dot" />
-                        {item.is_active ? "Active" : "Inactive"}
-                      </button>
-                    </td>
+
+                    {/* Actions: Edit, JSON Edit, Delete */}
                     <td style={{ textAlign: "right" }}>
                       <div className="catalog-row-actions">
+                        {/* Edit Button */}
                         <button
                           type="button"
-                          className="catalog-btn-icon"
-                          onClick={() => setViewItem(item)}
-                          title="View Technical Details"
-                        >
-                          <Eye size={15} />
-                        </button>
-                        <button
-                          type="button"
-                          className="catalog-btn-icon"
+                          className="catalog-action-btn catalog-btn-edit"
                           onClick={() => handleOpenEdit(item)}
-                          title="Edit Specifications"
+                          title="Edit Catalog Details"
                         >
-                          <Edit2 size={15} />
+                          <Edit2 size={13} />
+                          <span>Edit</span>
+                        </button>
+
+                        {/* JSON Edit Button */}
+                        <button
+                          type="button"
+                          className="catalog-action-btn catalog-btn-json"
+                          onClick={() => handleOpenJson(item)}
+                          title="Open & Edit Raw JSON"
+                        >
+                          <Code2 size={13} />
+                          <span>JSON</span>
+                        </button>
+
+                        {/* Delete Button */}
+                        <button
+                          type="button"
+                          className="catalog-action-btn catalog-btn-delete"
+                          onClick={() => setDeleteConfirmItem(item)}
+                          title="Delete Item"
+                        >
+                          <Trash2 size={13} />
                         </button>
                       </div>
                     </td>
@@ -526,457 +689,509 @@ export default function CatalogManagement() {
                 ))
               ) : (
                 <tr>
-                  <td colSpan={8} style={{ padding: "40px", textAlign: "center", color: "var(--muted)" }}>
-                    No catalog models match your search or category filter.
+                  <td colSpan={5} className="cases-empty-row" style={{ padding: "48px 24px", textAlign: "center" }}>
+                    <div style={{ color: "var(--ink)", fontWeight: 600, fontSize: "0.95rem" }}>
+                      No matching catalog models found
+                    </div>
+                    <div style={{ color: "var(--muted)", fontSize: "0.82rem", marginTop: 4 }}>
+                      Try adjusting your search criteria or category filter.
+                    </div>
                   </td>
                 </tr>
               )}
             </tbody>
           </table>
         </div>
-      </div>
 
-      {/* 5. View Item Modal */}
-      {viewItem && (
-        <div className="modal-overlay" onClick={() => setViewItem(null)}>
-          <div className="modal-panel model-modal-container" onClick={(e) => e.stopPropagation()}>
-            <div className="model-modal-header">
-              <div className="model-modal-header-left">
-                <div className="model-modal-icon-badge">
-                  <Package size={20} />
-                </div>
-                <div>
-                  <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
-                    <span className="catalog-model-badge">{viewItem.model_code_prefix}</span>
-                    <span className={`catalog-status-toggle ${viewItem.is_active ? "is-active" : "is-inactive"}`} style={{ pointerEvents: "none" }}>
-                      <span className="catalog-status-dot" />
-                      {viewItem.is_active ? "Active" : "Inactive"}
-                    </span>
-                  </div>
-                  <h3 className="model-modal-title" style={{ marginTop: 4 }}>
-                    {viewItem.display_name}
-                  </h3>
-                </div>
-              </div>
-              <button type="button" className="model-modal-close" onClick={() => setViewItem(null)}>
-                <X size={18} />
-              </button>
-            </div>
+        {/* Pagination Bar */}
+        {filteredItems.length > 0 && (
+          <div className="cases-pagination-wrap">
+            <div className="cases-pagination-info">
+              <span>
+                Showing <span className="cases-pagination-num">{(page - 1) * pageSize + 1}</span>–
+                <span className="cases-pagination-num">{Math.min(page * pageSize, filteredItems.length)}</span> of{" "}
+                <span className="cases-pagination-num">{filteredItems.length}</span> items
+              </span>
 
-            <div className="model-modal-body">
-              {/* Specification Grid */}
-              <div className="model-spec-section">
-                <span className="model-section-title">Technical Specifications</span>
-                <div className="model-view-spec-grid">
-                  <div className="model-spec-item">
-                    <span className="model-spec-label">Brand Owner</span>
-                    <span className="model-spec-val">{viewItem.brand_owner}</span>
-                  </div>
-                  <div className="model-spec-item">
-                    <span className="model-spec-label">Category</span>
-                    <span className="model-spec-val">{viewItem.category}</span>
-                  </div>
-                  <div className="model-spec-item">
-                    <span className="model-spec-label">Subcategory</span>
-                    <span className="model-spec-val">{viewItem.subcategory}</span>
-                  </div>
-                  <div className="model-spec-item">
-                    <span className="model-spec-label">Sensing Principle</span>
-                    <span className="model-spec-val">{viewItem.sensing_principle || "—"}</span>
-                  </div>
-                  <div className="model-spec-item">
-                    <span className="model-spec-label">Base List Price</span>
-                    <span className="model-spec-val" style={{ color: "var(--brand-dark)", fontWeight: 700 }}>
-                      ₹{viewItem.base_price.toLocaleString("en-IN")} / {viewItem.uom}
-                    </span>
-                  </div>
-                  <div className="model-spec-item">
-                    <span className="model-spec-label">Configurable Model</span>
-                    <span className="model-spec-val">{viewItem.is_configurable ? "Yes (Configurable Code)" : "Fixed Prefix"}</span>
-                  </div>
-                  <div className="model-spec-item" style={{ gridColumn: "span 2" }}>
-                    <span className="model-spec-label">Linked Datasheet</span>
-                    <span className="model-spec-val" style={{ display: "flex", alignItems: "center", gap: 6 }}>
-                      <FileText size={14} style={{ color: "#2563eb" }} />
-                      <strong>{viewItem.doc_code || "—"}</strong>
-                      <span style={{ color: "var(--muted)", fontSize: "0.8rem" }}>
-                        ({viewItem.source_pdf_name || "No PDF document attached"})
-                      </span>
-                    </span>
-                  </div>
-                </div>
-              </div>
-
-              {/* Application Description */}
-              <div className="model-spec-section">
-                <span className="model-section-title">Engineering Application & Limits</span>
-                <div className="model-desc-box">
-                  {viewItem.description || "No specific engineering application notes recorded."}
-                </div>
+              {/* Interactive Page Size Selector */}
+              <div className="cases-pagesize-wrap">
+                <select
+                  className="cases-pagesize-select"
+                  value={pageSize}
+                  onChange={(e) => {
+                    const newSize = Number(e.target.value);
+                    setPageSize(newSize);
+                    setPage(1);
+                  }}
+                  title="Select records per page"
+                >
+                  <option value={10}>10 / page</option>
+                  <option value={15}>15 / page (Default)</option>
+                  <option value={25}>25 / page</option>
+                  <option value={50}>50 / page</option>
+                </select>
               </div>
             </div>
 
-            <div className="model-modal-footer">
-              <button
-                type="button"
-                className="btn btn-outline"
-                onClick={() => {
-                  const toEdit = viewItem;
-                  setViewItem(null);
-                  handleOpenEdit(toEdit);
-                }}
-              >
-                <Edit2 size={14} />
-                <span>Edit Model</span>
-              </button>
-              <button type="button" className="btn btn-approve" onClick={() => setViewItem(null)}>
-                Close
-              </button>
+            <div className="cases-pagination-controls-group">
+              <div className="cases-pagination-btns">
+                {/* First Page */}
+                <button
+                  type="button"
+                  className="cases-page-btn cases-page-btn-nav"
+                  disabled={page <= 1}
+                  onClick={() => handlePageChange(1)}
+                  title="First page"
+                  aria-label="First page"
+                >
+                  <ChevronsLeft size={15} />
+                </button>
+
+                {/* Previous Page */}
+                <button
+                  type="button"
+                  className="cases-page-btn cases-page-btn-nav"
+                  disabled={page <= 1}
+                  onClick={() => handlePageChange(page - 1)}
+                  title="Previous page"
+                  aria-label="Previous page"
+                >
+                  <ChevronLeft size={15} />
+                  <span>Prev</span>
+                </button>
+
+                {/* Page Numbers */}
+                {getPageNumbers(page, totalPages).map((p, i) =>
+                  p === "..." ? (
+                    <span key={"dots-" + i} className="cases-pagination-dots">
+                      …
+                    </span>
+                  ) : (
+                    <button
+                      key={p}
+                      type="button"
+                      className={`cases-page-btn ${p === page ? "active" : ""}`}
+                      onClick={() => handlePageChange(p)}
+                      aria-current={p === page ? "page" : undefined}
+                    >
+                      {p}
+                    </button>
+                  )
+                )}
+
+                {/* Next Page */}
+                <button
+                  type="button"
+                  className="cases-page-btn cases-page-btn-nav"
+                  disabled={page >= totalPages}
+                  onClick={() => handlePageChange(page + 1)}
+                  title="Next page"
+                  aria-label="Next page"
+                >
+                  <span>Next</span>
+                  <ChevronRight size={15} />
+                </button>
+
+                {/* Last Page */}
+                <button
+                  type="button"
+                  className="cases-page-btn cases-page-btn-nav"
+                  disabled={page >= totalPages}
+                  onClick={() => handlePageChange(totalPages)}
+                  title="Last page"
+                  aria-label="Last page"
+                >
+                  <ChevronsRight size={15} />
+                </button>
+              </div>
+
+              {/* Direct Jump Box */}
+              {totalPages > 1 && (
+                <form onSubmit={handleJumpSubmit} className="cases-page-jump-box">
+                  <span>Go to</span>
+                  <input
+                    type="number"
+                    min="1"
+                    max={totalPages}
+                    value={jumpPage}
+                    onChange={(e) => setJumpPage(e.target.value)}
+                    className="cases-jump-input"
+                    placeholder={String(page)}
+                    aria-label="Jump to page"
+                  />
+                  <button type="submit" className="cases-jump-btn">
+                    Go
+                  </button>
+                </form>
+              )}
             </div>
           </div>
-        </div>
-      )}
+        )}
+      </div>
 
-      {/* 6. Edit / Add Item Modal */}
+      {/* ============================================================
+          5. ADD / EDIT CATALOG MODAL (With PDF Upload Option)
+          ============================================================ */}
       {editItem && (
         <div className="modal-overlay" onClick={() => setEditItem(null)}>
-          <div className="modal-panel model-modal-container" onClick={(e) => e.stopPropagation()}>
-            <form onSubmit={handleSaveForm}>
+          <div
+            className={`modal-panel model-modal-container ${isEditFullscreen ? "modal-fullscreen" : ""}`}
+            onClick={(e) => e.stopPropagation()}
+          >
+            <form onSubmit={handleSaveForm} className="model-modal-form">
               {/* Header */}
               <div className="model-modal-header">
                 <div className="model-modal-header-left">
                   <div className="model-modal-icon-badge">
-                    <Package size={20} />
+                    <BookOpen size={20} />
                   </div>
                   <div>
                     <h3 className="model-modal-title">
-                      {isNewItem ? "Add Master Product Model" : `Edit Model: ${formData.model_code_prefix}`}
+                      {isNewItem ? "Add New Catalog Model" : `Edit Catalog: ${formData.model_code_prefix}`}
                     </h3>
                     <p className="model-modal-sub">
-                      {isNewItem
-                        ? "Register a new instrument series into the AI recommendation catalogue."
-                        : "Update technical parameters, sensing mechanisms, and base catalog pricing."}
+                      Configure model code, catalog name, category, and technical datasheet PDF.
                     </p>
                   </div>
                 </div>
-                <button type="button" className="model-modal-close" onClick={() => setEditItem(null)}>
-                  <X size={18} />
-                </button>
+                <div style={{ display: "flex", alignItems: "center", gap: 6 }}>
+                  <button
+                    type="button"
+                    className="model-modal-close"
+                    onClick={() => setIsEditFullscreen((prev) => !prev)}
+                    title={isEditFullscreen ? "Exit Fullscreen" : "Fullscreen"}
+                  >
+                    {isEditFullscreen ? <Minimize2 size={16} /> : <Maximize2 size={16} />}
+                  </button>
+                  <button type="button" className="model-modal-close" onClick={() => setEditItem(null)}>
+                    <X size={18} />
+                  </button>
+                </div>
               </div>
 
-              {/* Scrollable Form Body */}
+              {/* Form Body: Model Code, Catalog Name, Category, PDF Upload */}
               <div className="model-modal-body">
-                {/* 1. Identification Section */}
-                <div className="model-form-section">
-                  <span className="model-section-title">1. Nomenclature & Identification</span>
-                  <div className="model-form-row model-form-row-2">
-                    <div className="model-field">
-                      <label className="model-field-label">
-                        Model Prefix Code <span className="model-req">*</span>
+                {/* 1. Model Code */}
+                <div className="model-field">
+                  <label className="model-field-label">
+                    Model Code <span className="model-req">*</span>
+                  </label>
+                  <input
+                    type="text"
+                    required
+                    placeholder="e.g. MLS-100, RDR-900"
+                    value={formData.model_code_prefix}
+                    onChange={(e) => setFormData({ ...formData, model_code_prefix: e.target.value })}
+                    className="model-field-input model-code-input"
+                  />
+                  <span className="model-field-hint">Unique identifier / model prefix for this product series</span>
+                </div>
+
+                {/* 2. Catalog Name */}
+                <div className="model-field">
+                  <label className="model-field-label">
+                    Catalog Name (Display Name) <span className="model-req">*</span>
+                  </label>
+                  <input
+                    type="text"
+                    required
+                    placeholder="e.g. Magnetic Level Switch - Miniature Top Mounted"
+                    value={formData.display_name}
+                    onChange={(e) => setFormData({ ...formData, display_name: e.target.value })}
+                    className="model-field-input"
+                  />
+                  <span className="model-field-hint">Full commercial title shown in catalogs and quotations</span>
+                </div>
+
+                {/* 3. Category */}
+                <div className="model-field">
+                  <label className="model-field-label">
+                    Category <span className="model-req">*</span>
+                  </label>
+                  <input
+                    type="text"
+                    required
+                    placeholder="e.g. LEVEL, FLOW, PRESSURE, TEMPERATURE"
+                    value={formData.category}
+                    onChange={(e) => setFormData({ ...formData, category: e.target.value.toUpperCase() })}
+                    className="model-field-input"
+                  />
+                  <span className="model-field-hint">Enter category name (e.g. LEVEL, FLOW, PRESSURE, TEMPERATURE, ULTRASONIC)</span>
+                </div>
+
+                {/* 4. PDF Upload & Datasheet Option */}
+                <div className="model-field">
+                  <label className="model-field-label">
+                    Technical Datasheet (PDF Upload Option)
+                  </label>
+
+                  {/* Hidden File Input */}
+                  <input
+                    ref={fileInputRef}
+                    type="file"
+                    accept="application/pdf,.pdf"
+                    style={{ display: "none" }}
+                    onChange={handlePdfFileSelect}
+                  />
+
+                  {formData.source_pdf_name ? (
+                    <div className="catalog-pdf-attached-card">
+                      <div className="catalog-pdf-attached-left">
+                        <div className="catalog-pdf-icon-wrap">
+                          <FileText size={20} style={{ color: "#e11d48" }} />
+                        </div>
+                        <div className="catalog-pdf-info">
+                          <span className="catalog-pdf-filename">{formData.source_pdf_name}</span>
+                          <span className="catalog-pdf-meta">
+                            {formData.pdf_file_size ? `${formData.pdf_file_size} • ` : ""}
+                            Datasheet Code: <strong>{formData.doc_code || `DOC-${formData.model_code_prefix || "PDF"}`}</strong>
+                          </span>
+                        </div>
+                      </div>
+
+                      <div className="catalog-pdf-actions">
+                        <button
+                          type="button"
+                          className="btn btn-outline"
+                          style={{ padding: "5px 10px", fontSize: "0.78rem" }}
+                          onClick={() => fileInputRef.current?.click()}
+                        >
+                          Replace PDF
+                        </button>
+                        <button
+                          type="button"
+                          className="catalog-pdf-remove-btn"
+                          onClick={handleRemovePdf}
+                          title="Remove PDF"
+                        >
+                          <X size={15} />
+                        </button>
+                      </div>
+                    </div>
+                  ) : (
+                    <div
+                      className="catalog-pdf-dropzone"
+                      onClick={() => fileInputRef.current?.click()}
+                    >
+                      <UploadCloud size={28} className="catalog-pdf-dropzone-icon" />
+                      <div className="catalog-pdf-dropzone-title">
+                        Click here to upload technical datasheet PDF
+                      </div>
+                      <div className="catalog-pdf-dropzone-sub">
+                        Accepts .pdf documents (Product brochures, wiring diagrams, spec sheets)
+                      </div>
+                    </div>
+                  )}
+
+                  {/* Optional Datasheet Document Code override */}
+                  {formData.source_pdf_name && (
+                    <div style={{ marginTop: 10 }}>
+                      <label className="model-field-label" style={{ fontSize: "0.75rem", color: "var(--muted)" }}>
+                        Datasheet Document Code (Optional)
                       </label>
                       <input
                         type="text"
-                        required
-                        placeholder="e.g. MLS-100"
-                        value={formData.model_code_prefix}
-                        onChange={(e) => setFormData({ ...formData, model_code_prefix: e.target.value })}
-                        className="model-field-input model-code-input"
-                      />
-                      <span className="model-field-hint">Unique identifier used for automated tag matching</span>
-                    </div>
-
-                    <div className="model-field">
-                      <label className="model-field-label">Brand Owner</label>
-                      <input
-                        type="text"
-                        value={formData.brand_owner}
-                        onChange={(e) => setFormData({ ...formData, brand_owner: e.target.value })}
-                        className="model-field-input"
-                        placeholder="e.g. TECHTROL"
-                      />
-                    </div>
-                  </div>
-
-                  <div className="model-field" style={{ marginTop: 12 }}>
-                    <label className="model-field-label">
-                      Full Display Name <span className="model-req">*</span>
-                    </label>
-                    <input
-                      type="text"
-                      required
-                      placeholder="e.g. Magnetic Level Switch - Miniature Top Mounted"
-                      value={formData.display_name}
-                      onChange={(e) => setFormData({ ...formData, display_name: e.target.value })}
-                      className="model-field-input"
-                    />
-                  </div>
-                </div>
-
-                {/* 2. Classification & Sensing Section */}
-                <div className="model-form-section">
-                  <span className="model-section-title">2. Engineering Classification & Principle</span>
-                  <div className="model-form-row model-form-row-3">
-                    {/* Primary Category */}
-                    <div className="model-field">
-                      <div className="model-field-header-row">
-                        <label className="model-field-label">
-                          Primary Category <span className="model-req">*</span>
-                        </label>
-                        <button
-                          type="button"
-                          className="model-field-toggle-btn"
-                          onClick={() => {
-                            if (!isCustomCategory) {
-                              setIsCustomCategory(true);
-                            } else {
-                              setIsCustomCategory(false);
-                              if (!STANDARD_CATEGORIES.includes((formData.category || "").toUpperCase())) {
-                                setFormData({ ...formData, category: "LEVEL" });
-                              }
-                            }
-                          }}
-                          title={isCustomCategory ? "Switch back to standard dropdown" : "Type category manually if not in list"}
-                        >
-                          {isCustomCategory ? "← Select from list" : "+ Write manually"}
-                        </button>
-                      </div>
-
-                      {isCustomCategory ? (
-                        <div className="model-custom-input-wrap">
-                          <input
-                            type="text"
-                            required
-                            placeholder="Type category (e.g. DENSITY, ANALYTICAL)…"
-                            value={formData.category}
-                            onChange={(e) => setFormData({ ...formData, category: e.target.value.toUpperCase() })}
-                            className="model-field-input"
-                            autoFocus
-                          />
-                          <div className="model-field-hint" style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
-                            <span>Manual category entry</span>
-                            <button
-                              type="button"
-                              style={{ background: "none", border: "none", color: "var(--brand)", fontSize: "0.72rem", cursor: "pointer", padding: 0, textDecoration: "underline" }}
-                              onClick={() => {
-                                setIsCustomCategory(false);
-                                setFormData({ ...formData, category: "LEVEL" });
-                              }}
-                            >
-                              Reset to list
-                            </button>
-                          </div>
-                        </div>
-                      ) : (
-                        <select
-                          value={formData.category}
-                          onChange={(e) => {
-                            if (e.target.value === "__WRITE_MANUAL__") {
-                              setIsCustomCategory(true);
-                              setFormData({ ...formData, category: "" });
-                            } else {
-                              setFormData({ ...formData, category: e.target.value });
-                            }
-                          }}
-                          className="model-field-select"
-                        >
-                          {STANDARD_CATEGORIES.map((cat) => (
-                            <option key={cat} value={cat}>
-                              {cat}
-                            </option>
-                          ))}
-                          <option value="__WRITE_MANUAL__">✍ + Write category manually…</option>
-                        </select>
-                      )}
-                    </div>
-
-                    {/* Subcategory */}
-                    <div className="model-field">
-                      <div className="model-field-header-row">
-                        <label className="model-field-label">
-                          Subcategory <span className="model-req">*</span>
-                        </label>
-                        <button
-                          type="button"
-                          className="model-field-toggle-btn"
-                          onClick={() => {
-                            if (!isCustomSubcategory) {
-                              setIsCustomSubcategory(true);
-                            } else {
-                              setIsCustomSubcategory(false);
-                              if (!STANDARD_SUBCATEGORIES.includes((formData.subcategory || "").toUpperCase())) {
-                                setFormData({ ...formData, subcategory: "SWITCH" });
-                              }
-                            }
-                          }}
-                          title={isCustomSubcategory ? "Switch back to standard dropdown" : "Type subcategory manually if not in list"}
-                        >
-                          {isCustomSubcategory ? "← Select from list" : "+ Write manually"}
-                        </button>
-                      </div>
-
-                      {isCustomSubcategory ? (
-                        <div className="model-custom-input-wrap">
-                          <input
-                            type="text"
-                            required
-                            placeholder="Type subcategory (e.g. SENSOR, CONTROLLER)…"
-                            value={formData.subcategory}
-                            onChange={(e) => setFormData({ ...formData, subcategory: e.target.value.toUpperCase() })}
-                            className="model-field-input"
-                            autoFocus
-                          />
-                          <div className="model-field-hint" style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
-                            <span>Manual subcategory entry</span>
-                            <button
-                              type="button"
-                              style={{ background: "none", border: "none", color: "var(--brand)", fontSize: "0.72rem", cursor: "pointer", padding: 0, textDecoration: "underline" }}
-                              onClick={() => {
-                                setIsCustomSubcategory(false);
-                                setFormData({ ...formData, subcategory: "SWITCH" });
-                              }}
-                            >
-                              Reset to list
-                            </button>
-                          </div>
-                        </div>
-                      ) : (
-                        <select
-                          value={formData.subcategory}
-                          onChange={(e) => {
-                            if (e.target.value === "__WRITE_MANUAL__") {
-                              setIsCustomSubcategory(true);
-                              setFormData({ ...formData, subcategory: "" });
-                            } else {
-                              setFormData({ ...formData, subcategory: e.target.value });
-                            }
-                          }}
-                          className="model-field-select"
-                        >
-                          {STANDARD_SUBCATEGORIES.map((sub) => (
-                            <option key={sub} value={sub}>
-                              {sub}
-                            </option>
-                          ))}
-                          <option value="__WRITE_MANUAL__">✍ + Write subcategory manually…</option>
-                        </select>
-                      )}
-                    </div>
-
-                    <div className="model-field">
-                      <label className="model-field-label">Sensing Principle</label>
-                      <input
-                        type="text"
-                        placeholder="e.g. Magnetic Float, Radar 80GHz"
-                        value={formData.sensing_principle}
-                        onChange={(e) => setFormData({ ...formData, sensing_principle: e.target.value })}
-                        className="model-field-input"
-                      />
-                    </div>
-                  </div>
-                </div>
-
-                {/* 3. Commercial & Documentation */}
-                <div className="model-form-section">
-                  <span className="model-section-title">3. Commercial Pricing & Datasheet</span>
-                  <div className="model-form-row model-form-row-3">
-                    <div className="model-field">
-                      <label className="model-field-label">Base List Price (₹)</label>
-                      <div className="model-input-addon-wrap">
-                        <span className="model-input-addon">₹</span>
-                        <input
-                          type="number"
-                          placeholder="12500"
-                          value={formData.base_price}
-                          onChange={(e) => setFormData({ ...formData, base_price: e.target.value })}
-                          className="model-field-input model-field-with-addon"
-                        />
-                      </div>
-                    </div>
-
-                    <div className="model-field">
-                      <label className="model-field-label">Unit of Measure (UOM)</label>
-                      <input
-                        type="text"
-                        placeholder="NOS, SET, MTR"
-                        value={formData.uom}
-                        onChange={(e) => setFormData({ ...formData, uom: e.target.value })}
-                        className="model-field-input"
-                      />
-                    </div>
-
-                    <div className="model-field">
-                      <label className="model-field-label">Datasheet Code</label>
-                      <input
-                        type="text"
-                        placeholder="e.g. DOC-MLS-01"
+                        placeholder="e.g. DOC-MLS-100"
                         value={formData.doc_code}
                         onChange={(e) => setFormData({ ...formData, doc_code: e.target.value })}
                         className="model-field-input"
+                        style={{ fontSize: "0.82rem", padding: "6px 10px" }}
                       />
                     </div>
-                  </div>
-                </div>
-
-                {/* 4. Description & Applications */}
-                <div className="model-form-section">
-                  <span className="model-section-title">4. Application Notes & Media Compatibility</span>
-                  <div className="model-field">
-                    <textarea
-                      rows={3}
-                      placeholder="Describe process fluid suitability, temperature/pressure limits, viscosity constraints, or mount requirements…"
-                      value={formData.description}
-                      onChange={(e) => setFormData({ ...formData, description: e.target.value })}
-                      className="model-field-textarea"
-                    />
-                  </div>
-                </div>
-
-                {/* 5. Engine Status & Toggle Cards */}
-                <div className="model-form-section" style={{ marginBottom: 0 }}>
-                  <span className="model-section-title">5. AI Matching Engine Status</span>
-                  <div className="model-toggle-grid">
-                    <label className={`model-toggle-card ${formData.is_configurable ? "selected" : ""}`}>
-                      <input
-                        type="checkbox"
-                        checked={formData.is_configurable}
-                        onChange={(e) => setFormData({ ...formData, is_configurable: e.target.checked })}
-                      />
-                      <div className="model-toggle-content">
-                        <span className="model-toggle-title">Configurable Series</span>
-                        <span className="model-toggle-sub">
-                          Generates structured custom order codes with process connection suffixes.
-                        </span>
-                      </div>
-                    </label>
-
-                    <label className={`model-toggle-card ${formData.is_active ? "selected" : ""}`}>
-                      <input
-                        type="checkbox"
-                        checked={formData.is_active}
-                        onChange={(e) => setFormData({ ...formData, is_active: e.target.checked })}
-                      />
-                      <div className="model-toggle-content">
-                        <span className="model-toggle-title">Active in Catalogue</span>
-                        <span className="model-toggle-sub">
-                          Eligible for automatic recommendation by the AI spec-matching algorithm.
-                        </span>
-                      </div>
-                    </label>
-                  </div>
+                  )}
                 </div>
               </div>
 
-              {/* Clean Sticky Footer */}
+              {/* Modal Footer */}
               <div className="model-modal-footer">
                 <button type="button" className="btn btn-outline" onClick={() => setEditItem(null)}>
                   Cancel
                 </button>
                 <button type="submit" className="btn btn-approve">
                   <Check size={15} />
-                  <span>{isNewItem ? "Create Product Model" : "Save Changes"}</span>
+                  <span>{isNewItem ? "Add to Catalog" : "Save Changes"}</span>
                 </button>
               </div>
             </form>
+          </div>
+        </div>
+      )}
+
+      {/* ============================================================
+          6. JSON VIEWER & EDITOR MODAL
+          ============================================================ */}
+      {jsonModalItem && (
+        <div className="modal-overlay" onClick={() => setJsonModalItem(null)}>
+          <div
+            className={`modal-panel catalog-json-modal-container ${isJsonFullscreen ? "modal-fullscreen" : ""}`}
+            onClick={(e) => e.stopPropagation()}
+          >
+            {/* Header */}
+            <div className="model-modal-header">
+              <div className="model-modal-header-left">
+                <div className="model-modal-icon-badge" style={{ background: "#eef2ff", color: "#4f46e5" }}>
+                  <FileJson size={22} />
+                </div>
+                <div>
+                  <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
+                    <span className="catalog-model-badge">{jsonModalItem.model_code_prefix}</span>
+                    <span style={{ fontSize: "0.76rem", color: "#6366f1", fontWeight: 700, background: "#e0e7ff", padding: "2px 7px", borderRadius: 4 }}>
+                      JSON EDIT
+                    </span>
+                  </div>
+                  <h3 className="model-modal-title" style={{ marginTop: 3 }}>
+                    JSON Viewer & Editor
+                  </h3>
+                  <p className="model-modal-sub">
+                    Directly modify product catalog JSON object. Live validation included.
+                  </p>
+                </div>
+              </div>
+
+              <div className="catalog-json-header-actions">
+                {/* Fullscreen Button */}
+                <button
+                  type="button"
+                  className="btn btn-outline"
+                  onClick={() => setIsJsonFullscreen((prev) => !prev)}
+                  title={isJsonFullscreen ? "Exit Fullscreen" : "Fullscreen"}
+                  style={{ padding: "6px 11px", fontSize: "0.78rem" }}
+                >
+                  {isJsonFullscreen ? <Minimize2 size={13} /> : <Maximize2 size={13} />}
+                  <span className="btn-label-responsive">{isJsonFullscreen ? "Exit Fullscreen" : "Fullscreen"}</span>
+                </button>
+
+                {/* Format Button */}
+                <button
+                  type="button"
+                  className="btn btn-outline"
+                  onClick={handleFormatJson}
+                  title="Auto-format and re-indent JSON"
+                  style={{ padding: "6px 11px", fontSize: "0.78rem" }}
+                >
+                  <RotateCcw size={13} />
+                  <span className="btn-label-responsive">Format</span>
+                </button>
+
+                {/* Copy Button */}
+                <button
+                  type="button"
+                  className="btn btn-outline"
+                  onClick={handleCopyJson}
+                  title="Copy JSON to clipboard"
+                  style={{ padding: "6px 11px", fontSize: "0.78rem" }}
+                >
+                  {jsonCopied ? <Check size={13} style={{ color: "var(--brand)" }} /> : <Copy size={13} />}
+                  <span className="btn-label-responsive">{jsonCopied ? "Copied!" : "Copy"}</span>
+                </button>
+
+                {/* Close */}
+                <button type="button" className="model-modal-close" onClick={() => setJsonModalItem(null)} title="Close">
+                  <X size={18} />
+                </button>
+              </div>
+            </div>
+
+            {/* Body */}
+            <div className="model-modal-body" style={{ padding: "16px 20px" }}>
+              {/* Syntax Error Alert */}
+              {jsonError && (
+                <div className="catalog-json-error-banner">
+                  <AlertTriangle size={16} style={{ flexShrink: 0 }} />
+                  <div>
+                    <strong>JSON Syntax Error:</strong> {jsonError}
+                  </div>
+                </div>
+              )}
+
+              {/* Code Editor Textarea */}
+              <div className="catalog-json-editor-wrap">
+                <textarea
+                  className="catalog-json-textarea"
+                  value={jsonText}
+                  onChange={(e) => handleJsonTextChange(e.target.value)}
+                  spellCheck="false"
+                  placeholder="Paste or write valid JSON here…"
+                />
+              </div>
+
+              <div style={{ display: "flex", justifyContent: "space-between", fontSize: "0.75rem", color: "var(--muted)" }}>
+                <span>Use valid JSON format with double quotes around property names.</span>
+                <span style={{ color: jsonError ? "#ef4444" : "var(--brand)", fontWeight: 600 }}>
+                  {jsonError ? "● Syntax Invalid" : "● Valid JSON"}
+                </span>
+              </div>
+            </div>
+
+            {/* Footer */}
+            <div className="model-modal-footer">
+              <button type="button" className="btn btn-outline" onClick={() => setJsonModalItem(null)}>
+                Cancel
+              </button>
+              <button
+                type="button"
+                className="btn btn-approve"
+                disabled={Boolean(jsonError)}
+                onClick={handleSaveJson}
+                style={{ opacity: jsonError ? 0.5 : 1, cursor: jsonError ? "not-allowed" : "pointer" }}
+              >
+                <Check size={15} />
+                <span>Save JSON Changes</span>
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* ============================================================
+          7. DELETE CONFIRMATION MODAL
+          ============================================================ */}
+      {deleteConfirmItem && (
+        <div className="modal-overlay" onClick={() => setDeleteConfirmItem(null)}>
+          <div className="modal-panel catalog-delete-modal-container" onClick={(e) => e.stopPropagation()}>
+            <div className="catalog-delete-modal-icon">
+              <Trash2 size={24} />
+            </div>
+
+            <h3 className="catalog-delete-modal-title">Delete Catalog Model</h3>
+            <p className="catalog-delete-modal-sub">
+              Are you sure you want to delete{" "}
+              <strong>{deleteConfirmItem.model_code_prefix}</strong> (
+              {deleteConfirmItem.display_name})?
+            </p>
+            <p style={{ fontSize: "0.8rem", color: "#dc2626", margin: "8px 0 0" }}>
+              This item will be permanently removed from your product catalog.
+            </p>
+
+            <div className="catalog-delete-modal-actions">
+              <button
+                type="button"
+                className="btn btn-outline"
+                onClick={() => setDeleteConfirmItem(null)}
+              >
+                Cancel
+              </button>
+              <button
+                type="button"
+                className="btn btn-danger"
+                style={{
+                  background: "#dc2626",
+                  color: "#ffffff",
+                  border: "none",
+                  display: "inline-flex",
+                  alignItems: "center",
+                  gap: 6,
+                  padding: "9px 18px",
+                  borderRadius: 8,
+                  fontWeight: 600,
+                  cursor: "pointer",
+                }}
+                onClick={handleDeleteConfirm}
+              >
+                <Trash2 size={15} />
+                <span>Delete Model</span>
+              </button>
+            </div>
           </div>
         </div>
       )}

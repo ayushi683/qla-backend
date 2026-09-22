@@ -4987,3 +4987,854 @@ select option {
   margin-top: 2px;
   flex-shrink: 0;
 }
+
+/* ============================================================
+   PRODUCT CATALOG: ACTION BUTTONS (EDIT, JSON, DELETE)
+   ============================================================ */
+.catalog-action-btn {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  padding: 5px 9px;
+  border-radius: 6px;
+  font-size: 0.76rem;
+  font-weight: 600;
+  cursor: pointer;
+  transition: all 0.15s cubic-bezier(0.16, 1, 0.3, 1);
+  border: 1px solid var(--border);
+  background: #ffffff;
+  color: var(--ink-soft);
+}
+
+.catalog-action-btn:hover {
+  transform: translateY(-1px);
+  box-shadow: 0 2px 4px rgba(0, 0, 0, 0.05);
+}
+
+.catalog-btn-edit {
+  color: #0d4a33;
+  border-color: #cbd5e1;
+}
+.catalog-btn-edit:hover {
+  background: #f0fdf4;
+  border-color: #10b981;
+  color: #065f46;
+}
+
+.catalog-btn-json {
+  background: #f8fafc;
+  color: #4f46e5;
+  border-color: #c7d2fe;
+}
+.catalog-btn-json:hover {
+  background: #eef2ff;
+  border-color: #6366f1;
+  color: #4338ca;
+}
+
+.catalog-btn-delete {
+  background: #ffffff;
+  color: #94a3b8;
+  border-color: #e2e8f0;
+  padding: 5px 7px;
+}
+.catalog-btn-delete:hover {
+  background: #fef2f2;
+  border-color: #fca5a5;
+  color: #dc2626;
+}
+
+/* ============================================================
+   PRODUCT CATALOG: PDF UPLOAD DROPZONE & ATTACHED CARD
+   ============================================================ */
+.catalog-pdf-dropzone {
+  border: 2px dashed #cbd5e1;
+  border-radius: 12px;
+  padding: 24px 16px;
+  background: #f8fafc;
+  text-align: center;
+  cursor: pointer;
+  transition: all 0.2s ease;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+}
+
+.catalog-pdf-dropzone:hover {
+  border-color: #0d4a33;
+  background: #f0fdf4;
+}
+
+.catalog-pdf-dropzone-icon {
+  color: #64748b;
+  margin-bottom: 8px;
+  transition: transform 0.2s ease, color 0.2s ease;
+}
+
+.catalog-pdf-dropzone:hover .catalog-pdf-dropzone-icon {
+  color: #0d4a33;
+  transform: translateY(-2px);
+}
+
+.catalog-pdf-dropzone-title {
+  font-size: 0.88rem;
+  font-weight: 600;
+  color: var(--ink);
+  margin-bottom: 3px;
+}
+
+.catalog-pdf-dropzone-sub {
+  font-size: 0.74rem;
+  color: var(--muted);
+}
+
+.catalog-pdf-attached-card {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 12px 14px;
+  background: #f0fdf4;
+  border: 1px solid #86efac;
+  border-radius: 10px;
+}
+
+.catalog-pdf-attached-left {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  min-width: 0;
+}
+
+.catalog-pdf-icon-wrap {
+  width: 38px;
+  height: 38px;
+  border-radius: 8px;
+  background: #ffffff;
+  border: 1px solid #bbf7d0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  flex-shrink: 0;
+}
+
+.catalog-pdf-info {
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+}
+
+.catalog-pdf-filename {
+  font-size: 0.86rem;
+  font-weight: 600;
+  color: var(--ink);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.catalog-pdf-meta {
+  font-size: 0.74rem;
+  color: #15803d;
+  margin-top: 2px;
+}
+
+.catalog-pdf-actions {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  flex-shrink: 0;
+}
+
+.catalog-pdf-remove-btn {
+  background: white;
+  border: 1px solid #e2e8f0;
+  border-radius: 6px;
+  width: 28px;
+  height: 28px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  color: #94a3b8;
+  cursor: pointer;
+  transition: all 0.15s ease;
+}
+
+.catalog-pdf-remove-btn:hover {
+  background: #fef2f2;
+  border-color: #fca5a5;
+  color: #dc2626;
+}
+
+/* ============================================================
+   PRODUCT CATALOG: JSON VIEWER & EDITOR MODAL
+   ============================================================ */
+.catalog-json-modal-container {
+  max-width: 760px !important;
+  width: 95% !important;
+  border-radius: 16px !important;
+  overflow: hidden !important;
+  display: flex !important;
+  flex-direction: column !important;
+  box-shadow: 0 24px 48px -12px rgba(0, 0, 0, 0.2) !important;
+  background: #ffffff !important;
+  border: 1px solid #e2e8f0 !important;
+  animation: modalFadeUp 0.2s cubic-bezier(0.16, 1, 0.3, 1) !important;
+  padding: 0 !important;
+}
+
+.catalog-json-error-banner {
+  background: #fef2f2;
+  border: 1px solid #fecaca;
+  color: #b91c1c;
+  padding: 10px 14px;
+  border-radius: 8px;
+  font-size: 0.82rem;
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  margin-bottom: 12px;
+  line-height: 1.4;
+}
+
+.catalog-json-editor-wrap {
+  position: relative;
+  border-radius: 10px;
+  overflow: hidden;
+  border: 1px solid #1e293b;
+  margin-bottom: 8px;
+  box-shadow: inset 0 2px 4px rgba(0, 0, 0, 0.3);
+}
+
+.catalog-json-textarea {
+  width: 100%;
+  height: 380px;
+  background: #0f172a;
+  color: #38bdf8;
+  font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono", "Courier New", monospace;
+  font-size: 0.86rem;
+  line-height: 1.6;
+  padding: 16px 18px;
+  border: none;
+  outline: none;
+  resize: vertical;
+  display: block;
+  tab-size: 2;
+  box-sizing: border-box;
+}
+
+.catalog-json-textarea::selection {
+  background: #0284c7;
+  color: #ffffff;
+}
+
+/* ============================================================
+   PRODUCT CATALOG: DELETE CONFIRMATION MODAL
+   ============================================================ */
+.catalog-delete-modal-container {
+  max-width: 440px !important;
+  width: 90% !important;
+  border-radius: 16px !important;
+  padding: 24px 24px 20px !important;
+  background: #ffffff !important;
+  box-shadow: 0 20px 40px -10px rgba(0, 0, 0, 0.2) !important;
+  border: 1px solid #e2e8f0 !important;
+  text-align: center;
+  animation: modalFadeUp 0.18s ease !important;
+}
+
+.catalog-delete-modal-icon {
+  width: 50px;
+  height: 50px;
+  border-radius: 50%;
+  background: #fef2f2;
+  color: #dc2626;
+  border: 2px solid #fee2e2;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  margin: 0 auto 16px;
+}
+
+.catalog-delete-modal-title {
+  font-size: 1.15rem;
+  font-weight: 700;
+  color: var(--ink);
+  margin: 0 0 8px;
+}
+
+.catalog-delete-modal-sub {
+  font-size: 0.88rem;
+  color: var(--ink-soft);
+  line-height: 1.5;
+  margin: 0;
+}
+
+.catalog-delete-modal-actions {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 12px;
+  margin-top: 24px;
+}
+/* ============================================================
+   PRODUCT CATALOG: ACTION BUTTONS (EDIT, JSON, DELETE)
+   ============================================================ */
+.catalog-action-btn {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  padding: 5px 9px;
+  border-radius: 6px;
+  font-size: 0.76rem;
+  font-weight: 600;
+  cursor: pointer;
+  transition: all 0.15s cubic-bezier(0.16, 1, 0.3, 1);
+  border: 1px solid var(--border);
+  background: #ffffff;
+  color: var(--ink-soft);
+}
+
+.catalog-action-btn:hover {
+  transform: translateY(-1px);
+  box-shadow: 0 2px 4px rgba(0, 0, 0, 0.05);
+}
+
+.catalog-btn-edit {
+  color: #0d4a33;
+  border-color: #cbd5e1;
+}
+.catalog-btn-edit:hover {
+  background: #f0fdf4;
+  border-color: #10b981;
+  color: #065f46;
+}
+
+.catalog-btn-json {
+  background: #f8fafc;
+  color: #4f46e5;
+  border-color: #c7d2fe;
+}
+.catalog-btn-json:hover {
+  background: #eef2ff;
+  border-color: #6366f1;
+  color: #4338ca;
+}
+
+.catalog-btn-delete {
+  background: #ffffff;
+  color: #94a3b8;
+  border-color: #e2e8f0;
+  padding: 5px 7px;
+}
+.catalog-btn-delete:hover {
+  background: #fef2f2;
+  border-color: #fca5a5;
+  color: #dc2626;
+}
+
+/* ============================================================
+   PRODUCT CATALOG: PDF UPLOAD DROPZONE & ATTACHED CARD
+   ============================================================ */
+.catalog-pdf-dropzone {
+  border: 2px dashed #cbd5e1;
+  border-radius: 12px;
+  padding: 24px 16px;
+  background: #f8fafc;
+  text-align: center;
+  cursor: pointer;
+  transition: all 0.2s ease;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+}
+
+.catalog-pdf-dropzone:hover {
+  border-color: #0d4a33;
+  background: #f0fdf4;
+}
+
+.catalog-pdf-dropzone-icon {
+  color: #64748b;
+  margin-bottom: 8px;
+  transition: transform 0.2s ease, color 0.2s ease;
+}
+
+.catalog-pdf-dropzone:hover .catalog-pdf-dropzone-icon {
+  color: #0d4a33;
+  transform: translateY(-2px);
+}
+
+.catalog-pdf-dropzone-title {
+  font-size: 0.88rem;
+  font-weight: 600;
+  color: var(--ink);
+  margin-bottom: 3px;
+}
+
+.catalog-pdf-dropzone-sub {
+  font-size: 0.74rem;
+  color: var(--muted);
+}
+
+.catalog-pdf-attached-card {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 12px 14px;
+  background: #f0fdf4;
+  border: 1px solid #86efac;
+  border-radius: 10px;
+}
+
+.catalog-pdf-attached-left {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  min-width: 0;
+}
+
+.catalog-pdf-icon-wrap {
+  width: 38px;
+  height: 38px;
+  border-radius: 8px;
+  background: #ffffff;
+  border: 1px solid #bbf7d0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  flex-shrink: 0;
+}
+
+.catalog-pdf-info {
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+}
+
+.catalog-pdf-filename {
+  font-size: 0.86rem;
+  font-weight: 600;
+  color: var(--ink);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.catalog-pdf-meta {
+  font-size: 0.74rem;
+  color: #15803d;
+  margin-top: 2px;
+}
+
+.catalog-pdf-actions {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  flex-shrink: 0;
+}
+
+.catalog-pdf-remove-btn {
+  background: white;
+  border: 1px solid #e2e8f0;
+  border-radius: 6px;
+  width: 28px;
+  height: 28px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  color: #94a3b8;
+  cursor: pointer;
+  transition: all 0.15s ease;
+}
+
+.catalog-pdf-remove-btn:hover {
+  background: #fef2f2;
+  border-color: #fca5a5;
+  color: #dc2626;
+}
+
+/* ============================================================
+   PRODUCT CATALOG: JSON VIEWER & EDITOR MODAL
+   ============================================================ */
+.catalog-json-modal-container {
+  max-width: 760px !important;
+  width: 95% !important;
+  border-radius: 16px !important;
+  overflow: hidden !important;
+  display: flex !important;
+  flex-direction: column !important;
+  box-shadow: 0 24px 48px -12px rgba(0, 0, 0, 0.2) !important;
+  background: #ffffff !important;
+  border: 1px solid #e2e8f0 !important;
+  animation: modalFadeUp 0.2s cubic-bezier(0.16, 1, 0.3, 1) !important;
+  padding: 0 !important;
+}
+
+.catalog-json-error-banner {
+  background: #fef2f2;
+  border: 1px solid #fecaca;
+  color: #b91c1c;
+  padding: 10px 14px;
+  border-radius: 8px;
+  font-size: 0.82rem;
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  margin-bottom: 12px;
+  line-height: 1.4;
+}
+
+.catalog-json-editor-wrap {
+  position: relative;
+  border-radius: 10px;
+  overflow: hidden;
+  border: 1px solid #1e293b;
+  margin-bottom: 8px;
+  box-shadow: inset 0 2px 4px rgba(0, 0, 0, 0.3);
+}
+
+.catalog-json-textarea {
+  width: 100%;
+  height: 380px;
+  background: #0f172a;
+  color: #38bdf8;
+  font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono", "Courier New", monospace;
+  font-size: 0.86rem;
+  line-height: 1.6;
+  padding: 16px 18px;
+  border: none;
+  outline: none;
+  resize: vertical;
+  display: block;
+  tab-size: 2;
+  box-sizing: border-box;
+}
+
+.catalog-json-textarea::selection {
+  background: #0284c7;
+  color: #ffffff;
+}
+
+/* ============================================================
+   PRODUCT CATALOG: DELETE CONFIRMATION MODAL
+   ============================================================ */
+.catalog-delete-modal-container {
+  max-width: 440px !important;
+  width: 90% !important;
+  border-radius: 16px !important;
+  padding: 24px 24px 20px !important;
+  background: #ffffff !important;
+  box-shadow: 0 20px 40px -10px rgba(0, 0, 0, 0.2) !important;
+  border: 1px solid #e2e8f0 !important;
+  text-align: center;
+  animation: modalFadeUp 0.18s ease !important;
+}
+
+.catalog-delete-modal-icon {
+  width: 50px;
+  height: 50px;
+  border-radius: 50%;
+  background: #fef2f2;
+  color: #dc2626;
+  border: 2px solid #fee2e2;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  margin: 0 auto 16px;
+}
+
+.catalog-delete-modal-title {
+  font-size: 1.15rem;
+  font-weight: 700;
+  color: var(--ink);
+  margin: 0 0 8px;
+}
+
+.catalog-delete-modal-sub {
+  font-size: 0.88rem;
+  color: var(--ink-soft);
+  line-height: 1.5;
+  margin: 0;
+}
+
+.catalog-delete-modal-actions {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 12px;
+  margin-top: 24px;
+}
+
+/* ============================================================
+   PRODUCT CATALOG: FULLSCREEN MODAL EXPANSION
+   ============================================================ */
+.modal-panel.modal-fullscreen {
+  position: fixed !important;
+  inset: 0 !important;
+  width: 100vw !important;
+  height: 100vh !important;
+  max-width: 100vw !important;
+  max-height: 100vh !important;
+  border-radius: 0 !important;
+  border: none !important;
+  margin: 0 !important;
+  z-index: 1100 !important;
+  display: flex !important;
+  flex-direction: column !important;
+  box-shadow: none !important;
+}
+
+.modal-panel.modal-fullscreen .model-modal-form {
+  height: 100vh !important;
+  max-height: 100vh !important;
+  flex: 1 1 auto !important;
+}
+
+.modal-panel.modal-fullscreen .model-modal-body {
+  max-height: calc(100vh - 130px) !important;
+  flex: 1 1 auto !important;
+  overflow-y: auto !important;
+  padding: 24px 32px !important;
+}
+
+.modal-panel.modal-fullscreen .catalog-json-editor-wrap {
+  flex: 1 1 auto !important;
+  display: flex !important;
+  flex-direction: column !important;
+}
+
+.modal-panel.modal-fullscreen .catalog-json-textarea {
+  height: calc(100vh - 240px) !important;
+  flex: 1 1 auto !important;
+  font-size: 0.92rem !important;
+}
+
+/* ============================================================
+   RESPONSIVE DESIGN: CATALOG MANAGEMENT & MODALS
+   ============================================================ */
+.catalog-json-header-actions {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex-shrink: 0;
+}
+
+/* Tablet & Mobile Screens (<= 768px) */
+@media (max-width: 768px) {
+  /* Modals */
+  .model-modal-container,
+  .catalog-json-modal-container {
+    width: 96% !important;
+    max-width: 96% !important;
+    max-height: 94vh !important;
+    border-radius: 12px !important;
+    margin: 8px auto !important;
+  }
+
+  .model-modal-form {
+    max-height: 94vh !important;
+    height: 100% !important;
+    flex: 1 1 auto !important;
+  }
+
+  .model-modal-header {
+    padding: 14px 16px;
+    gap: 10px;
+    flex-wrap: wrap;
+  }
+
+  .model-modal-header-left {
+    gap: 10px;
+    min-width: 0;
+    flex: 1 1 auto;
+  }
+
+  .model-modal-icon-badge {
+    width: 36px;
+    height: 36px;
+    border-radius: 8px;
+  }
+
+  .model-modal-title {
+    font-size: 1.05rem;
+  }
+
+  .model-modal-sub {
+    font-size: 0.74rem;
+  }
+
+  .model-modal-body {
+    padding: 16px;
+    gap: 14px;
+    max-height: calc(90vh - 120px);
+  }
+
+  .model-modal-footer {
+    padding: 12px 16px;
+    gap: 8px;
+  }
+
+  /* Fullscreen on smaller screens */
+  .modal-panel.modal-fullscreen .model-modal-body {
+    padding: 16px !important;
+    max-height: calc(100vh - 120px) !important;
+  }
+
+  .modal-panel.modal-fullscreen .catalog-json-textarea {
+    height: calc(100vh - 190px) !important;
+    font-size: 0.84rem !important;
+  }
+
+  /* PDF Card responsive layout */
+  .catalog-pdf-attached-card {
+    flex-wrap: wrap;
+    gap: 10px;
+  }
+
+  .catalog-pdf-attached-left {
+    width: 100%;
+  }
+
+  .catalog-pdf-actions {
+    width: 100%;
+    justify-content: flex-end;
+  }
+
+  /* KPI Grid */
+  .catalog-kpi-grid {
+    grid-template-columns: repeat(auto-fit, minmax(160px, 1fr));
+    gap: 10px;
+    margin-bottom: 14px;
+  }
+
+  .catalog-kpi-card {
+    padding: 12px 14px;
+    gap: 10px;
+  }
+
+  .catalog-kpi-val {
+    font-size: 1.25rem;
+  }
+
+  /* Search Bar */
+  .catalog-filter-bar {
+    padding: 8px 10px;
+  }
+
+  /* Table & Pagination */
+  .cases-pagination-wrap {
+    flex-direction: column;
+    align-items: center;
+    gap: 12px;
+    padding: 12px 16px;
+  }
+
+  .cases-pagination-info {
+    width: 100%;
+    justify-content: space-between;
+    flex-wrap: wrap;
+    gap: 8px;
+  }
+
+  .cases-pagination-controls-group {
+    width: 100%;
+    justify-content: center;
+    gap: 10px;
+  }
+}
+
+/* Mobile Screens (<= 640px) */
+@media (max-width: 640px) {
+  /* Header Toolbar: show clean icon-only buttons for JSON actions */
+  .btn-label-responsive {
+    display: none;
+  }
+
+  .catalog-json-header-actions .btn {
+    padding: 6px 8px !important;
+  }
+
+  /* Page Header */
+  .catalog-header {
+    flex-direction: column;
+    align-items: stretch;
+    gap: 12px;
+  }
+
+  .catalog-header-actions {
+    width: 100%;
+  }
+
+  .catalog-header-actions .btn {
+    width: 100%;
+    justify-content: center;
+  }
+
+  /* Row actions in table */
+  .catalog-action-btn span {
+    display: none;
+  }
+
+  .catalog-action-btn {
+    padding: 5px 6px;
+  }
+
+  .catalog-delete-modal-container {
+    width: 94% !important;
+    padding: 20px 16px 16px !important;
+  }
+
+  .catalog-delete-modal-actions {
+    flex-direction: column-reverse;
+    gap: 8px;
+  }
+
+  .catalog-delete-modal-actions .btn {
+    width: 100%;
+    justify-content: center;
+  }
+
+  /* Edit & Add Catalog Modal footer buttons on mobile */
+  .model-modal-footer {
+    padding: 12px 16px !important;
+    gap: 8px !important;
+  }
+
+  .model-modal-footer .btn {
+    flex: 1 1 0 !important;
+    justify-content: center !important;
+    padding: 9px 12px !important;
+    font-size: 0.84rem !important;
+  }
+}
+
+/* Extra Small Phones (<= 480px) */
+@media (max-width: 480px) {
+  .model-modal-container,
+  .catalog-json-modal-container {
+    width: 98% !important;
+    max-width: 98% !important;
+    border-radius: 10px !important;
+    margin: 4px auto !important;
+  }
+
+  .model-modal-body {
+    padding: 14px 12px !important;
+  }
+
+  .model-modal-header {
+    padding: 12px 14px !important;
+  }
+
+  .catalog-kpi-grid {
+    grid-template-columns: 1fr;
+  }
+
+  .cases-pagination-btns {
+    justify-content: center;
+  }
+}

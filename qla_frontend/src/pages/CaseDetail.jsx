@@ -299,15 +299,17 @@ export default function CaseDetail() {
             </button>
           ))}
         </div>
-        <button
-          className="cases-btn-ai"
-          disabled={matchingBusy}
-          onClick={handleRunAiMatch}
-          title="Run AI technical specification match"
-        >
-          {aiRunning ? <RefreshCw size={13} className="spin" /> : <Play size={13} fill="currentColor" />}
-          {aiRunning ? "Running AI…" : "Run AI"}
-        </button>
+        {tab === "products" && (
+          <button
+            className="cases-btn-ai"
+            disabled={matchingBusy}
+            onClick={handleRunAiMatch}
+            title="Run AI technical specification match"
+          >
+            {aiRunning ? <RefreshCw size={13} className="spin" /> : <Play size={13} fill="currentColor" />}
+            {aiRunning ? "Running AI…" : "Run AI"}
+          </button>
+        )}
       </div>
 
       {/* ---------- OVERVIEW ---------- */}
