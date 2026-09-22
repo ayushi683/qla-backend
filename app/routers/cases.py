@@ -207,6 +207,7 @@ def case_detail(case_id: int, db: Session = Depends(get_db)):
     case = db.get(InquiryCase, case_id)
     if case is None:
         raise HTTPException(404, "Case not found")
+    _merge_fps_ecs_line_items(db, case_id)
     _split_distinct_product_line_items(db, case_id)
     line_items = (
         db.query(ExtractedLineItem).filter_by(case_id=case_id).order_by(ExtractedLineItem.line_no).all()
@@ -852,6 +853,94 @@ def _clean_model_code(raw: str, family: str = "") -> str:
     return mn
 
 
+def _explode_techtrol_x_line(code: str) -> list[str]:
+    """FPS-A X ECS-B X ECS-C → two SKUs, never one triple-joined string."""
+    raw = (code or "").strip()
+    if not raw:
+        return []
+    spaced = re.sub(r"(?i)\s*[xX×]\s*", " X ", raw)
+    parts = [re.sub(r"\s+", "", p.strip()) for p in re.split(r"\s+X\s+", spaced) if p.strip()]
+    if len(parts) <= 1:
+        return [raw]
+    if len(parts) == 2:
+        return [f"{parts[0]} X {parts[1]}"]
+    left = parts[0]
+    out: list[str] = []
+    seen: set[str] = set()
+    for part in parts[1:]:
+        if not re.match(r"(?i)(?:ECS|TLC)-", part):
+            continue
+        line = f"{left} X {part}"
+        key = re.sub(r"[\s\-]+", "", line.upper())
+        if key in seen:
+            continue
+        seen.add(key)
+        out.append(line)
+    return out or [raw]
+
+
+def _collapse_unified_fps_ecs(rows: list[dict]) -> list[dict]:
+    """One card per FPS×ECS pair. Never join two cages onto one SKU."""
+    if not rows:
+        return rows
+    combos: list[dict] = []
+    fps = None
+    ecs: list[str] = []
+    rest: list[dict] = []
+    drop_sib = {"ECS", "TLC", "CFS", "ECT", "CFPS", "FPSB", "FPSO"}
+    for row in rows:
+        fam = str(row.get("_family") or "").strip().upper()
+        mn = str(row.get("_model") or "").strip()
+        if re.search(r"(?i)\s+X\s+", mn):
+            for line in _explode_techtrol_x_line(mn):
+                combo = dict(row)
+                combo["_family"] = line.split("-", 1)[0].upper() or "FPS"
+                combo["_display"] = line
+                combo["_model"] = line
+                combo["_needs_details"] = False
+                combo["_alts"] = []
+                combo["_conf"] = max(float(combo.get("_conf") or 0), 0.98)
+                combos.append(combo)
+            continue
+        if fam in {"FPS", "FPSB"} and mn.upper().startswith("FPS") and " X " not in mn.upper():
+            if fam == "FPS" or fps is None:
+                fps = dict(row)
+            continue
+        if fam == "ECS" and mn.upper().startswith("ECS"):
+            ecs.append(mn.split(" X ")[0].strip())
+            continue
+        if fam in drop_sib:
+            continue
+        rest.append(row)
+    if not combos and fps is not None and ecs:
+        left = str(fps.get("_model") or "").split(" X ")[0].strip()
+        for right in dict.fromkeys(ecs):
+            combo = dict(fps)
+            combo["_family"] = "FPS"
+            combo["_display"] = f"{left} X {right}"
+            combo["_model"] = f"{left} X {right}"
+            combo["_needs_details"] = False
+            combo["_alts"] = []
+            combo["_conf"] = max(float(combo.get("_conf") or 0), 0.98)
+            combo["_rationale"] = "FPS with external cage ECS (Techtrol X accessory)"
+            combos.append(combo)
+    if not combos:
+        return rows
+    seen: set[str] = set()
+    uniq: list[dict] = []
+    for c in combos:
+        k = str(c.get("_model") or "").upper()
+        if k in seen:
+            continue
+        seen.add(k)
+        uniq.append(c)
+    return uniq + [
+        r
+        for r in rest
+        if str(r.get("_family") or "").upper() not in drop_sib
+    ]
+
+
 def _alts_from_family(fam: dict, primary_mn: str) -> list[dict]:
     seen = {primary_mn.upper()} if primary_mn else set()
     alts = []
@@ -881,9 +970,35 @@ def _alts_from_family(fam: dict, primary_mn: str) -> list[dict]:
 
 
 def _unify_ai_products(result: dict) -> list[dict]:
-    """One primary row per distinct product family, plus extra suggested SKUs."""
+    """One card per Techtrol X combo (or per family when not combined)."""
     unified: dict[str, dict] = {}
+    expanded: list[dict] = []
     for fam in result.get("products") or []:
+        family = str(fam.get("product_family") or fam.get("display_name") or "").strip()
+        codes: list[str] = []
+        primary = _clean_model_code(fam.get("model_number") or fam.get("model_code"), family)
+        if primary:
+            codes.append(primary)
+        for sm in fam.get("suggested_models") or []:
+            cand = _clean_model_code(sm.get("model_number") or sm.get("model_code"), family)
+            if cand:
+                codes.append(cand)
+        xcodes: list[str] = []
+        for c in dict.fromkeys(codes):
+            if re.search(r"(?i)\s+X\s+", c):
+                xcodes.extend(_explode_techtrol_x_line(c) or [c])
+        xcodes = list(dict.fromkeys(xcodes))
+        if xcodes:
+            for c in xcodes:
+                row = dict(fam)
+                row["model_number"] = c
+                row["model_code"] = c
+                row["suggested_models"] = [{"model_number": c, "model_code": c}]
+                expanded.append(row)
+        else:
+            expanded.append(fam)
+
+    for fam in expanded:
         family = str(fam.get("product_family") or fam.get("display_name") or "").strip()
         if not family:
             continue
@@ -898,54 +1013,52 @@ def _unify_ai_products(result: dict) -> list[dict]:
             conf = float(fam.get("confidence") or 0)
         except (TypeError, ValueError):
             conf = 0.0
-        key = family.upper()
+        key = mn.upper() if mn and re.search(r"(?i)\s+X\s+", mn) else family.upper()
         prev = unified.get(key)
         better_sku = bool(mn) and (not prev or not prev["_model"])
         better_conf = prev is None or conf > float(prev["_conf"])
-        alts = _alts_from_family(fam, mn)
+        alts = [] if (mn and re.search(r"(?i)\s+X\s+", mn)) else _alts_from_family(fam, mn)
         if prev is None or better_sku or (better_conf and (bool(mn) == bool(prev["_model"]))):
-            display = str(fam.get("display_name") or family)
+            display = mn if (mn and re.search(r"(?i)\s+X\s+", mn)) else str(fam.get("display_name") or family)
             why = fam.get("why") or []
             rationale = ", ".join(str(w) for w in why if w) or "Matched by AI model."
             if not mn:
                 rationale = (rationale + " — family identified; exact model needs details.")[:1000]
-            merged_alts = alts
-            if prev:
-                seen = {mn.upper()} if mn else set()
-                merged_alts = []
-                for alt in alts + prev.get("_alts", []):
-                    code = (alt.get("_model") or "").upper()
-                    if not code or code in seen:
-                        continue
-                    if mn and _same_gathered_sku(code, mn):
-                        continue
-                    if any(_same_gathered_sku(code, prev) for prev in seen):
-                        continue
-                    seen.add(code)
-                    merged_alts.append(alt)
             unified[key] = {
-                "_family": family,
+                "_family": family.split()[0] if family else family,
                 "_display": display,
                 "_model": mn,
                 "_conf": max(0.0, min(conf, 0.9999)),
                 "_rationale": rationale[:1000],
                 "_needs_details": bool(fam.get("needs_details")) or not mn,
-                "_alts": merged_alts,
+                "_alts": alts,
             }
-        elif prev:
-            seen = {(prev["_model"] or "").upper()} if prev["_model"] else set()
-            seen.update((a.get("_model") or "").upper() for a in prev.get("_alts") or [])
-            for alt in alts:
-                code = (alt.get("_model") or "").upper()
-                if code and code not in seen and not (
-                    prev["_model"] and _same_gathered_sku(code, prev["_model"])
-                ) and not any(_same_gathered_sku(code, s) for s in seen):
-                    prev["_alts"].append(alt)
-                    seen.add(code)
 
     rows = sorted(unified.values(), key=lambda r: r["_conf"], reverse=True)
     strong = [r for r in rows if r["_conf"] >= 0.30]
-    return strong or rows
+    collapsed = strong or rows
+    has_rfg = any(str(r.get("_family") or "").upper() == "RFG" for r in collapsed)
+    if has_rfg:
+        collapsed = [r for r in collapsed if str(r.get("_family") or "").upper() != "RFGB"]
+    drop_acc = set()
+    has_fps_x = False
+    for r in collapsed:
+        mn = str(r.get("_model") or "")
+        if re.search(r"(?i)\s+X\s+", mn):
+            for part in re.split(r"(?i)\s+X\s+", mn)[1:]:
+                drop_acc.add(part.split("-", 1)[0].upper())
+            if re.search(r"(?i)\bECS-", mn):
+                has_fps_x = True
+    if has_fps_x:
+        drop_acc.update({"ECS", "TLC", "CFS", "ECT", "CFPS", "FPSB", "FPSO"})
+    if drop_acc:
+        collapsed = [
+            r
+            for r in collapsed
+            if str(r.get("_family") or "").upper() not in drop_acc
+            or re.search(r"(?i)\s+X\s+", str(r.get("_model") or ""))
+        ]
+    return _collapse_unified_fps_ecs(collapsed)
 
 
 def _persist_ai_match(
@@ -1071,6 +1184,129 @@ def _recommendation_family_key(rec: ProductRecommendation) -> str:
     return (rec.model_code or "").strip().upper()
 
 
+def _merge_fps_ecs_line_items(db: Session, case_id: int) -> None:
+    """One web-panel card per FPS×ECS pair. Never join two cages; drop CFS/ECT."""
+    drop_sib = {"ECS", "TLC", "CFS", "ECT", "CFPS", "FPSB", "FPSO"}
+    items = (
+        db.query(ExtractedLineItem)
+        .filter_by(case_id=case_id)
+        .order_by(ExtractedLineItem.line_no, ExtractedLineItem.line_item_id)
+        .all()
+    )
+    if not items:
+        return
+
+    combo_codes: list[str] = []
+    fps_sku = ""
+    ecs_codes: list[str] = []
+    for item in items:
+        for rec in item.recommendations or []:
+            mc = (rec.model_code or "").strip()
+            fam = (rec.family_code or item.product_type or "").strip().upper()
+            if re.search(r"(?i)FPS\S*\s+X\s+ECS-", mc) or re.search(
+                r"(?i)\s+X\s+ECS-", mc
+            ):
+                for line in _explode_techtrol_x_line(mc):
+                    if not re.search(r"(?i)\s+X\s+ECS-", line):
+                        continue
+                    key = re.sub(r"[\s\-]+", "", line.upper())
+                    if key not in {re.sub(r"[\s\-]+", "", c.upper()) for c in combo_codes}:
+                        combo_codes.append(line)
+            elif fam in {"FPS", "FPSB"} and mc.upper().replace(" ", "").startswith("FPS"):
+                if not fps_sku or fam == "FPS":
+                    fps_sku = mc.split(" X ")[0].strip()
+            elif fam == "ECS" and mc.upper().startswith("ECS"):
+                ecs_codes.append(mc.split(" X ")[0].strip())
+    if not combo_codes and fps_sku and ecs_codes:
+        for right in dict.fromkeys(ecs_codes):
+            combo_codes.append(f"{fps_sku} X {right}")
+    if not combo_codes:
+        return
+
+    changed = False
+    slot_items: list[ExtractedLineItem] = []
+    for item in list(items):
+        quoted = db.query(QuotationLine).filter_by(line_item_id=item.line_item_id).first()
+        fam = (item.product_type or "").strip().upper()
+        recs = list(item.recommendations or [])
+        has_x = any(re.search(r"(?i)\s+X\s+ECS-", r.model_code or "") for r in recs)
+        rec_fams = {(r.family_code or "").strip().upper() for r in recs}
+        if has_x or fam in {"FPS", "FPSB"}:
+            slot_items.append(item)
+            continue
+        if fam in drop_sib or (rec_fams and rec_fams <= drop_sib):
+            if quoted:
+                continue
+            for rec in recs:
+                db.delete(rec)
+            db.delete(item)
+            changed = True
+
+    while len(slot_items) < len(combo_codes):
+        src = slot_items[0] if slot_items else items[0]
+        max_no = max((it.line_no or 1) for it in slot_items) if slot_items else 1
+        line = ExtractedLineItem(
+            case_id=case_id,
+            line_no=max_no + 1,
+            description="FPS X ECS",
+            qty=src.qty or Decimal("1"),
+            uom=src.uom or "NOS",
+            product_type="FPS",
+            extraction_method="ai-match",
+        )
+        db.add(line)
+        db.flush()
+        slot_items.append(line)
+        changed = True
+
+    extra_slots = slot_items[len(combo_codes):]
+    slot_items = slot_items[: len(combo_codes)]
+    for item in extra_slots:
+        if db.query(QuotationLine).filter_by(line_item_id=item.line_item_id).first():
+            continue
+        for rec in list(item.recommendations or []):
+            db.delete(rec)
+        db.delete(item)
+        changed = True
+
+    for idx, code in enumerate(combo_codes):
+        item = slot_items[idx]
+        item.product_type = "FPS"
+        item.description = code[:1000]
+        recs = list(item.recommendations or [])
+        if recs:
+            rec = recs[0]
+            rec.model_code = code[:120]
+            rec.family_code = "FPS"
+            rec.confidence = max(float(rec.confidence or 0), 0.98)
+            rec.rationale = "FPS with external cage ECS (Techtrol X accessory)"
+            rec.match_level = "A"
+            rec.rank_no = 1
+            for extra in recs[1:]:
+                db.delete(extra)
+                changed = True
+        else:
+            db.add(
+                ProductRecommendation(
+                    case_id=case_id,
+                    line_item_id=item.line_item_id,
+                    rank_no=1,
+                    match_level="A",
+                    family_code="FPS",
+                    model_code=code[:120],
+                    confidence=Decimal("0.9800"),
+                    rationale="FPS with external cage ECS (Techtrol X accessory)",
+                    is_selected_by_engineer=None,
+                    decided_by=None,
+                )
+            )
+        changed = True
+
+    if changed:
+        db.commit()
+        db.expire_all()
+
+
 def _split_distinct_product_line_items(db: Session, case_id: int) -> None:
     """Split distinct product families that were stored on one enquiry line.
 
@@ -1093,6 +1329,53 @@ def _split_distinct_product_line_items(db: Session, case_id: int) -> None:
         if len(recs) < 2:
             continue
         if db.query(QuotationLine).filter_by(line_item_id=item.line_item_id).first():
+            continue
+        x_recs = [rec for rec in recs if re.search(r"(?i)\s+X\s+", rec.model_code or "")]
+        if x_recs:
+            exploded: list[str] = []
+            for rec in x_recs:
+                exploded.extend(_explode_techtrol_x_line(rec.model_code or ""))
+            exploded = list(dict.fromkeys(exploded))
+            if len(exploded) <= 1 and len(recs) == len(x_recs):
+                continue
+            # Multiple FPS×ECS pairs on one line → one card each
+            if len(exploded) > 1:
+                recs[0].model_code = exploded[0][:120]
+                recs[0].family_code = "FPS"
+                recs[0].rank_no = 1
+                recs[0].match_level = "A"
+                for extra in recs[1:]:
+                    db.delete(extra)
+                for code in exploded[1:]:
+                    max_line_no += 1
+                    new_item = ExtractedLineItem(
+                        case_id=case_id,
+                        line_no=max_line_no,
+                        description=code[:1000],
+                        qty=item.qty,
+                        uom=item.uom,
+                        product_type="FPS",
+                        extraction_method=item.extraction_method or "ai-match",
+                    )
+                    db.add(new_item)
+                    db.flush()
+                    db.add(
+                        ProductRecommendation(
+                            case_id=case_id,
+                            line_item_id=new_item.line_item_id,
+                            rank_no=1,
+                            match_level="A",
+                            family_code="FPS",
+                            model_code=code[:120],
+                            confidence=recs[0].confidence,
+                            rationale=recs[0].rationale,
+                            is_selected_by_engineer=None,
+                            decided_by=None,
+                        )
+                    )
+                item.product_type = "FPS"
+                item.description = exploded[0][:1000]
+                changed = True
             continue
         groups: dict[str, list[ProductRecommendation]] = {}
         for rec in recs:
@@ -1174,6 +1457,7 @@ def run_ai_match(case_id: int, db: Session = Depends(get_db)):
         enquiry_title=(email_msg.subject if email_msg else None),
     )
     db.commit()
+    _merge_fps_ecs_line_items(db, case.case_id)
 
     return {
         "status": "done",
@@ -1304,6 +1588,7 @@ def _run_ai_match_for_case(db: Session, case_id: int) -> BulkAiMatchResultItem:
         enquiry_title=(email_msg.subject if email_msg else None),
     )
     db.commit()
+    _merge_fps_ecs_line_items(db, case.case_id)
     return BulkAiMatchResultItem(case_id=case_id, status="done", items_matched=matched_count)
 
 

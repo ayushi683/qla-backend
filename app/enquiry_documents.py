@@ -102,6 +102,10 @@ def is_price_or_quotation_file(name: str) -> bool:
     if not base or base.startswith("~$"):
         return False
     stem, ext = os.path.splitext(base.lower())
+    if ext == ".doc" and re.fullmatch(r"0*\d{3,6}", stem):
+        return True
+    if re.search(r"(?i)(?:^|[_\-])corr(?:[_\-.]|$)", base) and ext == ".pdf":
+        return True
     if _PRICE_QUOTE_RE.search(base):
         return True
     if ext in _SPREADSHEET_EXT and "price" in stem:
