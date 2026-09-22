@@ -1,5 +1,5 @@
 import { useState, useEffect } from "react";
-import { Link, useParams } from "react-router-dom";
+import { Link, useParams, useLocation } from "react-router-dom";
 import { Play, RefreshCw } from "lucide-react";
 import { api } from "../api/client";
 import { formatDateTime } from "../utils/dateFormat";
@@ -8,6 +8,7 @@ import ProductMatchCard from "../components/ProductMatchCard";
 import PdfViewerModal from "../components/PdfViewerModal";
 import GenerateQuotationModal from "../components/GenerateQuotationModal";
 import { topRecommendation } from "../utils/recommendations";
+
 
 function statusClass(status) {
   return `status-pill status-${(status || "").toLowerCase()}`;
@@ -77,6 +78,8 @@ const TABS = [
 
 export default function CaseDetail() {
   const { caseId } = useParams();
+  const location = useLocation();
+  const fromPage = location.state?.fromPage;
   const { data: caseData, loading, error, refresh } = usePolling(
     () => api.caseDetail(caseId),
     12000
@@ -261,7 +264,9 @@ export default function CaseDetail() {
 
   return (
     <div className="page">
-      <Link className="back-link" to="/cases">&larr; All cases</Link>
+      <Link className="back-link" to={fromPage ? `/cases?page=${fromPage}` : "/cases"}>
+  &larr; All cases
+</Link>
 
       <div className="case-detail-head">
         <div>
@@ -306,15 +311,21 @@ export default function CaseDetail() {
           <div className="overview-card" style={{ marginBottom: 20 }}>
             <div className="overview-card-head">
               <h3 className="modal-section-heading" style={{ margin: 0 }}>Case Information</h3>
-              <button
-                className="cases-btn-ai"
-                disabled={matchingBusy}
-                onClick={handleRunAiMatch}
-                title="Run AI technical specification match"
-              >
-                {aiRunning ? <RefreshCw size={13} className="spin" /> : <Play size={13} fill="currentColor" />}
-                {aiRunning ? "Running AI…" : productsRefreshing ? "Refreshing…" : "Run AI"}
-              </button>
+              {caseData.status === "RECEIVED" ? (
+                <button
+                  className="cases-btn-ai"
+                  disabled={matchingBusy}
+                  onClick={handleRunAiMatch}
+                  title="Run AI technical specification match"
+                >
+                  {aiRunning ? <RefreshCw size={13} className="spin" /> : <Play size={13} fill="currentColor" />}
+                  {aiRunning ? "Running AI…" : "Run AI"}
+                </button>
+              ) : (
+                <span className="state-pill" style={{ background: "var(--success-tint)", color: "var(--success)" }}>
+                  ✓ Query already run
+                </span>
+              )}
             </div>
             {aiError && <div className="flash flash-error" style={{ marginBottom: 12 }}>{aiError}</div>}
             {aiMessage && !aiError && (
@@ -413,14 +424,20 @@ export default function CaseDetail() {
           )}
           <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 12 }}>
             <p className="page-sub" style={{ margin: 0 }}>{itemsToReview} of {caseData.line_items?.length || 0} items need a decision</p>
-            <button
-              className="cases-btn-ai"
-              disabled={matchingBusy}
-              onClick={handleRunAiMatch}
-            >
-              {aiRunning ? <RefreshCw size={13} className="spin" /> : <Play size={13} fill="currentColor" />}
-              {aiRunning ? "Running AI…" : "Run AI"}
-            </button>
+            {caseData.status === "RECEIVED" ? (
+              <button
+                className="cases-btn-ai"
+                disabled={matchingBusy}
+                onClick={handleRunAiMatch}
+              >
+                {aiRunning ? <RefreshCw size={13} className="spin" /> : <Play size={13} fill="currentColor" />}
+                {aiRunning ? "Running AI…" : "Run AI"}
+              </button>
+            ) : (
+              <span className="state-pill" style={{ background: "var(--success-tint)", color: "var(--success)" }}>
+                ✓ Query already run
+              </span>
+            )}
           </div>
           {matchingBusy && !caseData.line_items?.length ? (
             <div className="loading-state">Fetching latest match results…</div>

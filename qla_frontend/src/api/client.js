@@ -60,7 +60,8 @@ export const api = {
     request(`/api/recommendations/${recId}/edit`, { method: "POST", body: payload }),
   pickAlternative: (lineItemId, recId) =>
     request(`/api/line-items/${lineItemId}/pick/${recId}`, { method: "POST" }),
-
+   approveAsNewItem: (recId) =>
+    request(`/api/recommendations/${recId}/approve-as-new-item`, { method: "POST" }),
   quotationDetail: (caseId) => request(`/api/cases/${caseId}/quotation`),
   generateQuotation: (caseId) => request(`/api/cases/${caseId}/quotation/generate`, { method: "POST" }),
   updateQuotationLine: (caseId, lineItemId, payload) =>

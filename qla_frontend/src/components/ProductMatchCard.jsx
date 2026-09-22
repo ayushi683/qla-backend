@@ -21,6 +21,7 @@ export default function ProductMatchCard({ item, onChanged, onRejected, onQuotat
   const [rationale, setRationale] = useState("");
   const [error, setError] = useState("");
   const [busyGlobal, setBusyGlobal] = useState(false);
+  const [addedAltIds, setAddedAltIds] = useState(new Set());
 
   const topRec = topRecommendation(item);
   const otherRecs = otherRecommendations(item, topRec);
@@ -68,6 +69,14 @@ export default function ProductMatchCard({ item, onChanged, onRejected, onQuotat
 
   function handleUseInstead(recId) {
     runAction(() => api.pickAlternative(item.line_item_id, recId));
+  }
+
+  function handleAddAlternate(recId) {
+    runAction(async () => {
+      const result = await api.approveAsNewItem(recId);
+      setAddedAltIds((prev) => new Set(prev).add(recId));
+      if (result?.quotation_generated) onQuotationReady?.();
+    });
   }
 
   if (!topRec) {
@@ -137,18 +146,34 @@ export default function ProductMatchCard({ item, onChanged, onRejected, onQuotat
           <div className="disclosure-toggle" style={{ cursor: "default" }}>
             {otherRecs.length} other suggested match{otherRecs.length > 1 ? "es" : ""} for this product
           </div>
-          {otherRecs.map((rec) => (
-            <div className="modal-alt-row" key={rec.recommendation_id}>
-              <code>{rec.model_code || rec.family_code || "—"}</code>
-              <span className={`confidence-badge ${confidenceClass(rec.confidence)}`}>
-                {confidencePercent(rec.confidence) !== null ? `${confidencePercent(rec.confidence)}%` : "—"}
-              </span>
-              <span className="modal-alt-rationale">{rec.rationale || "—"}</span>
-              <button className="btn btn-small" disabled={busyGlobal} onClick={() => handleUseInstead(rec.recommendation_id)}>
-                Use this instead
-              </button>
-            </div>
-          ))}
+          <p style={{ fontSize: "0.76rem", color: "var(--muted)", margin: "2px 0 8px" }}>
+            "Use this instead" replaces the current pick. "Also quote this" adds it as an extra line item alongside the current pick.
+          </p>
+          {otherRecs.map((rec) => {
+            const alreadyAdded = addedAltIds.has(rec.recommendation_id);
+            return (
+              <div className="modal-alt-row" key={rec.recommendation_id}>
+                <code>{rec.model_code || rec.family_code || "—"}</code>
+                <span className={`confidence-badge ${confidenceClass(rec.confidence)}`}>
+                  {confidencePercent(rec.confidence) !== null ? `${confidencePercent(rec.confidence)}%` : "—"}
+                </span>
+                <span className="modal-alt-rationale">{rec.rationale || "—"}</span>
+                <div style={{ display: "flex", gap: 6 }}>
+                  <button className="btn btn-small" disabled={busyGlobal} onClick={() => handleUseInstead(rec.recommendation_id)}>
+                    Use this instead
+                  </button>
+                  <button
+                    className="btn btn-small"
+                    disabled={busyGlobal || alreadyAdded}
+                    onClick={() => handleAddAlternate(rec.recommendation_id)}
+                    style={alreadyAdded ? { color: "var(--success)", borderColor: "var(--success)" } : undefined}
+                  >
+                    {alreadyAdded ? "✓ Added" : "Also quote this"}
+                  </button>
+                </div>
+              </div>
+            );
+          })}
         </div>
       )}
     </div>

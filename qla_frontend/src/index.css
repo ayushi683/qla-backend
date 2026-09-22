@@ -911,6 +911,14 @@ select option {
 .case-detail-head { display: flex; align-items: flex-start; justify-content: space-between; gap: 16px; flex-wrap: wrap; margin-bottom: 20px; }
 .overview-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 20px; }
 .overview-card { background: var(--card); border: 1px solid var(--border); border-radius: var(--radius); padding: 18px 20px; }
+.overview-card-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  margin-bottom: 14px;
+  flex-wrap: wrap;
+}
 .summary-list { margin: 0; }
 .summary-list > div { display: flex; justify-content: space-between; gap: 12px; padding: 9px 0; border-bottom: 1px solid var(--border); font-size: 0.87rem; }
 .summary-list > div:last-child { border-bottom: none; }
@@ -2558,8 +2566,15 @@ select option {
 .cases-action-group {
   display: flex;
   align-items: center;
-  justify-content: flex-end;
+  justify-content: center;
   gap: 8px;
+  width: 172px;
+  margin: 0 auto;
+}
+
+.cases-action-group .cases-btn-open:only-child {
+  width: 100%;
+  justify-content: center;
 }
 
 .cases-btn-open {

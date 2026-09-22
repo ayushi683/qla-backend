@@ -1,5 +1,5 @@
 import { useState, useMemo, useEffect, useRef } from "react";
-import { Link } from "react-router-dom";
+import { Link, useSearchParams } from "react-router-dom";
 import {
   Search,
   X,
@@ -39,33 +39,50 @@ function getPageNumbers(current, total) {
   if (total <= 7) {
     return Array.from({ length: total }, (_, i) => i + 1);
   }
-  // When near beginning: show 5 pages at start, then ellipsis and last page
   if (current <= 4) {
     return [1, 2, 3, 4, 5, "...", total];
   }
-  // When near end: show first page, ellipsis, and last 5 pages
   if (current >= total - 3) {
     return [1, "...", total - 4, total - 3, total - 2, total - 1, total];
   }
-  // When in middle: show 1 ... current-1, current, current+1 ... total
   return [1, "...", current - 1, current, current + 1, "...", total];
 }
 
 export default function CasesList() {
+  const [searchParams, setSearchParams] = useSearchParams();
   const { data: cases, loading, error, reload } = usePolling(() => api.cases(), 12000);
   const [search, setSearch] = useState("");
   const [dateFrom, setDateFrom] = useState("");
   const [dateTo, setDateTo] = useState("");
   const [statusFilter, setStatusFilter] = useState("all");
-  const [page, setPage] = useState(1);
-  const [pageSize, setPageSize] = useState(15);
+  const [page, setPage] = useState(() => {
+    const fromUrl = parseInt(searchParams.get("page"), 10);
+    if (!isNaN(fromUrl) && fromUrl > 0) return fromUrl;
+    try {
+      const saved = sessionStorage.getItem("qla_cases_page");
+      const parsed = parseInt(saved, 10);
+      return !isNaN(parsed) && parsed > 0 ? parsed : 1;
+    } catch {
+      return 1;
+    }
+  });
+  const [pageSize, setPageSize] = useState(() => {
+    try {
+      const saved = sessionStorage.getItem("qla_cases_pagesize");
+      const parsed = parseInt(saved, 10);
+      return [10, 15, 20].includes(parsed) ? parsed : 15;
+    } catch {
+      return 15;
+    }
+  });
   const [jumpPage, setJumpPage] = useState("");
 
-  // Clear any stale sessionStorage that may have stored 50 or other large page sizes
   useEffect(() => {
     try {
-      sessionStorage.setItem("qla_cases_pagesize", "15");
-      sessionStorage.setItem("qla_cases_page", "1");
+      const ps = parseInt(sessionStorage.getItem("qla_cases_pagesize"), 10);
+      if (![10, 15, 20].includes(ps)) {
+        sessionStorage.setItem("qla_cases_pagesize", "15");
+      }
     } catch {}
   }, []);
 
@@ -76,12 +93,10 @@ export default function CasesList() {
   const [batchProgress, setBatchProgress] = useState(null);
   const tableWrapRef = useRef(null);
 
-  // Directly use real cases connected from backend API
   const allCases = useMemo(() => {
     return Array.isArray(cases) ? cases : [];
   }, [cases]);
 
-  // Real-time status counts derived from all available cases
   const statusCounts = useMemo(() => {
     const counts = { all: allCases.length, RECEIVED: 0, IN_REVIEW: 0, QUOTED: 0 };
     allCases.forEach((c) => {
@@ -121,21 +136,51 @@ export default function CasesList() {
     return filtered.slice(start, start + pageSize);
   }, [filtered, page, pageSize, totalPages]);
 
-  const isFirstRender = useRef(true);
+  // Sync `page` state whenever the URL's ?page= changes — this is what
+  // makes browser back/forward and direct links like /cases?page=3
+  // actually restore the correct page. Without this, only the URL
+  // updated but the visible table kept whatever page state it had.
   useEffect(() => {
-    if (isFirstRender.current) {
-      isFirstRender.current = false;
-      return;
+    const fromUrl = parseInt(searchParams.get("page"), 10);
+    if (!isNaN(fromUrl) && fromUrl > 0 && fromUrl !== page) {
+      setPage(fromUrl);
+      try {
+        sessionStorage.setItem("qla_cases_page", String(fromUrl));
+      } catch {
+        // ignore
+      }
     }
-    setPage(1);
-    try {
-      sessionStorage.setItem("qla_cases_page", "1");
-    } catch {
-      // ignore
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [searchParams]);
+
+  const prevFiltersRef = useRef({ search, dateFrom, dateTo, statusFilter });
+  useEffect(() => {
+    const prev = prevFiltersRef.current;
+    const changed =
+      prev.search !== search ||
+      prev.dateFrom !== dateFrom ||
+      prev.dateTo !== dateTo ||
+      prev.statusFilter !== statusFilter;
+
+    if (changed) {
+      prevFiltersRef.current = { search, dateFrom, dateTo, statusFilter };
+      setPage(1);
+      try {
+        sessionStorage.setItem("qla_cases_page", "1");
+      } catch {
+        // ignore
+      }
+      setSearchParams((prev2) => {
+        const next = new URLSearchParams(prev2);
+        next.set("page", "1");
+        return next;
+      });
     }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [search, dateFrom, dateTo, statusFilter]);
 
   useEffect(() => {
+    if (cases === null || cases === undefined) return; // data still loading — don't clamp yet
     if (totalPages > 0 && page > totalPages) {
       setPage(totalPages);
       try {
@@ -144,7 +189,7 @@ export default function CasesList() {
         // ignore
       }
     }
-  }, [page, totalPages]);
+  }, [cases, page, totalPages]);
 
   const handlePageChange = (newPage) => {
     if (newPage < 1 || newPage > totalPages || newPage === page) return;
@@ -154,6 +199,11 @@ export default function CasesList() {
     } catch {
       // ignore
     }
+    setSearchParams((prev) => {
+      const next = new URLSearchParams(prev);
+      next.set("page", String(newPage));
+      return next;
+    });
     if (tableWrapRef.current) {
       tableWrapRef.current.scrollIntoView({ behavior: "smooth", block: "start" });
     }
@@ -297,7 +347,6 @@ export default function CasesList() {
       {/* 3. Search & Filter Bar */}
       <div className="cases-filter-card">
         <div className="cases-filter-left">
-          {/* Search Input with Icon & Clear */}
           <div className="cases-search-wrapper">
             <Search size={16} className="cases-search-icon" />
             <input
@@ -318,7 +367,6 @@ export default function CasesList() {
             )}
           </div>
 
-          {/* Date Range Picker */}
           <div className="cases-date-group">
             <Calendar size={14} style={{ color: "var(--muted)" }} />
             <input
@@ -351,7 +399,6 @@ export default function CasesList() {
         </div>
       </div>
 
-      {/* Error Alert */}
       {error && (
         <div className="flash flash-error" style={{ marginBottom: 16 }}>
           <AlertCircle size={15} style={{ display: "inline", verticalAlign: "middle", marginRight: 6 }} />
@@ -359,9 +406,7 @@ export default function CasesList() {
         </div>
       )}
 
-      {/* 4. Table & Batch Operations */}
       <div ref={tableWrapRef}>
-        {/* Floating Batch Action Bar */}
         {selectedIds.size > 0 && (
           <div className="cases-batch-toolbar" onMouseDown={(e) => e.stopPropagation()}>
             <div className="cases-batch-badge">
@@ -390,7 +435,6 @@ export default function CasesList() {
           </div>
         )}
 
-        {/* Loading State */}
         {loading && allCases.length === 0 ? (
           <div className="cases-table-card">
             <div className="cases-empty-card">
@@ -417,7 +461,6 @@ export default function CasesList() {
                     <th style={{ width: 130 }}>Status</th>
                     <th style={{ minWidth: 220 }}>Customer & Project</th>
                     <th style={{ width: 130 }}>Received</th>
-                    {/* Hidden for now: <th style={{ width: 150 }}>AI Match Conf.</th> */}
                     <th style={{ width: 200, textAlign: "center" }}>Actions</th>
                   </tr>
                 </thead>
@@ -429,7 +472,6 @@ export default function CasesList() {
 
                     return (
                       <tr key={c.case_id} className={isSelected ? "row-selected" : ""}>
-                        {/* 1. Selection Checkbox */}
                         <td>
                           <input
                             type="checkbox"
@@ -439,7 +481,6 @@ export default function CasesList() {
                           />
                         </td>
 
-                        {/* 2. Reference & Revision */}
                         <td>
                           <Link to={`/cases/${c.case_id}`} className="cases-ref-tag">
                             {c.internal_ref || "UNTITLED"}
@@ -453,7 +494,6 @@ export default function CasesList() {
                           )}
                         </td>
 
-                        {/* 3. Status Badge */}
                         <td>
                           <span className={statusClass(c.status)}>
                             <span
@@ -471,7 +511,6 @@ export default function CasesList() {
                           </span>
                         </td>
 
-                        {/* 4. Customer & Project */}
                         <td>
                           <div className="cases-cust-name">{c.customer_name || "—"}</div>
                           {c.project_name && (
@@ -482,58 +521,35 @@ export default function CasesList() {
                           )}
                         </td>
 
-                        {/* 5. Received Date (DD/MM/YYYY) */}
                         <td style={{ color: "var(--ink-soft)", whiteSpace: "nowrap" }}>
                           {formatDate(c.enq_received_at)}
                         </td>
 
-                        {/* 6. AI Match Confidence (Hidden for now)
-                        <td>
-                          {conf !== null && conf !== undefined ? (
-                            <span className={`cases-conf-pill cases-conf-${tier}`}>
-                              <span
-                                className="cases-dot"
-                                style={{
-                                  background:
-                                    tier === "high"
-                                      ? "#10b981"
-                                      : tier === "mid"
-                                      ? "#f59e0b"
-                                      : "#ef4444"
-                                }}
-                              />
-                              {Math.round(parseFloat(conf) * 100)}% Match
-                            </span>
-                          ) : (
-                            <span className="cases-conf-pill cases-conf-none">—</span>
-                          )}
-                        </td>
-                        */}
-
-                        {/* 7. Actions */}
                         <td>
                           <div className="cases-action-group">
                             <Link
                               className="cases-btn-open"
                               to={`/cases/${c.case_id}`}
+                              state={{ fromPage: page }}
                               title="Open inquiry details"
                             >
                               Open
                               <ArrowUpRight size={13} />
                             </Link>
 
-                            <button
-                              className="cases-btn-ai"
-                              disabled={aiRunningId === c.case_id || batchRunning}
-                              onClick={() => handleRunAiMatch(c.case_id)}
-                              title="Run AI technical specification match"
-                            >
-                              <Play size={11} fill="currentColor" />
-                              {aiRunningId === c.case_id ? "Running…" : "Run AI"}
-                            </button>
+                            {c.status !== "IN_REVIEW" && (
+                              <button
+                                className="cases-btn-ai"
+                                disabled={aiRunningId === c.case_id || batchRunning}
+                                onClick={() => handleRunAiMatch(c.case_id)}
+                                title="Run AI technical specification match"
+                              >
+                                <Play size={11} fill="currentColor" />
+                                {aiRunningId === c.case_id ? "Running…" : "Run AI"}
+                              </button>
+                            )}
                           </div>
 
-                          {/* AI Result Notice */}
                           {aiResults[c.case_id] && (
                             <div style={{ textAlign: "right" }}>
                               <span
@@ -557,7 +573,6 @@ export default function CasesList() {
               </table>
             </div>
 
-            {/* Pagination Controls */}
             {filtered.length > 0 && (
               <div className="cases-pagination-wrap">
                 <div className="cases-pagination-info">
@@ -566,8 +581,7 @@ export default function CasesList() {
                     <span className="cases-pagination-num">{Math.min(page * pageSize, filtered.length)}</span> of{" "}
                     <span className="cases-pagination-num">{filtered.length}</span> cases
                   </span>
-                  
-                  {/* Interactive Page Size Selector */}
+
                   <div className="cases-pagesize-wrap">
                     <select
                       className="cases-pagesize-select"
@@ -580,6 +594,11 @@ export default function CasesList() {
                           sessionStorage.setItem("qla_cases_pagesize", String(newSize));
                           sessionStorage.setItem("qla_cases_page", "1");
                         } catch {}
+                        setSearchParams((prev) => {
+                          const next = new URLSearchParams(prev);
+                          next.set("page", "1");
+                          return next;
+                        });
                       }}
                       title="Select records per page"
                     >
@@ -592,7 +611,6 @@ export default function CasesList() {
 
                 <div className="cases-pagination-controls-group">
                   <div className="cases-pagination-btns">
-                    {/* First Page */}
                     <button
                       type="button"
                       className="cases-page-btn cases-page-btn-nav"
@@ -604,7 +622,6 @@ export default function CasesList() {
                       <ChevronsLeft size={15} />
                     </button>
 
-                    {/* Previous Page */}
                     <button
                       type="button"
                       className="cases-page-btn cases-page-btn-nav"
@@ -617,7 +634,6 @@ export default function CasesList() {
                       <span>Prev</span>
                     </button>
 
-                    {/* Page Numbers */}
                     {getPageNumbers(page, totalPages).map((p, i) =>
                       p === "..." ? (
                         <span key={"dots-" + i} className="cases-pagination-dots">
@@ -636,7 +652,6 @@ export default function CasesList() {
                       )
                     )}
 
-                    {/* Next Page */}
                     <button
                       type="button"
                       className="cases-page-btn cases-page-btn-nav"
@@ -649,7 +664,6 @@ export default function CasesList() {
                       <ChevronRight size={15} />
                     </button>
 
-                    {/* Last Page */}
                     <button
                       type="button"
                       className="cases-page-btn cases-page-btn-nav"
@@ -662,7 +676,6 @@ export default function CasesList() {
                     </button>
                   </div>
 
-                  {/* Quick Jump Input */}
                   {totalPages > 1 && (
                     <div className="cases-page-jump-box">
                       <span>Go to</span>
@@ -704,7 +717,6 @@ export default function CasesList() {
             )}
           </div>
         ) : (
-          /* Empty State */
           <div className="cases-table-card">
             <div className="cases-empty-card">
               <div className="cases-empty-icon">

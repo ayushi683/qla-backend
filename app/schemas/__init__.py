@@ -305,6 +305,7 @@ class CommunicationEntry(BaseModel):
     body_text: Optional[str] = None
     timestamp: Optional[datetime] = None
     is_current_revision: bool = True
+    matched_products: Optional[list[str]] = None
 
 
 class BulkAiMatchRequest(BaseModel):

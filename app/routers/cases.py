@@ -73,20 +73,22 @@ def _case_to_out(c, revision_count: int = 1) -> CaseOut:
 
 
 def _maybe_create_quotation_draft(db: Session, case_id: int):
-    """Creates the QuotationDraft + QuotationLine rows once every line
-    item is approved — but does NOT generate the .docx yet. The
-    engineer reviews/edits the draft lines first (on the Quotation
-    page), then explicitly clicks 'Generate' to build the actual file."""
-    case = db.get(InquiryCase, case_id)
+    """Creates (or updates) the QuotationDraft + QuotationLine rows as
+    soon as AT LEAST ONE line item is approved — no longer waits for
+    every line item to be approved. Each time a new item gets approved,
+    its line is added to the existing draft if one already exists.
+    Does NOT generate the .docx yet, and does NOT flip the case status
+    to QUOTED — that only happens once the document is actually
+    generated (see generate_quotation_document)."""
     line_items = db.query(ExtractedLineItem).filter_by(case_id=case_id).all()
     if not line_items:
         return None
 
-    all_approved = all(
-        _top_recommendation(item) and _top_recommendation(item).is_selected_by_engineer is True
-        for item in line_items
-    )
-    if not all_approved:
+    approved_items = [
+        item for item in line_items
+        if _top_recommendation(item) and _top_recommendation(item).is_selected_by_engineer is True
+    ]
+    if not approved_items:
         return None
 
     existing = (
@@ -95,36 +97,53 @@ def _maybe_create_quotation_draft(db: Session, case_id: int):
         .order_by(QuotationDraft.revision_no.desc())
         .first()
     )
+
     if existing is not None:
+        existing_line_item_ids = {
+            ql.line_item_id
+            for ql in db.query(QuotationLine).filter_by(draft_id=existing.draft_id).all()
+        }
+        next_line_no = (
+            db.query(func.max(QuotationLine.line_no)).filter_by(draft_id=existing.draft_id).scalar() or 0
+        )
+        added = False
+        for item in approved_items:
+            if item.line_item_id in existing_line_item_ids:
+                continue
+            rec = _top_recommendation(item)
+            spec_bits = [b for b in [item.moc, item.range_text, item.op_temp, item.op_pressure] if b]
+            next_line_no += 1
+            db.add(QuotationLine(
+                draft_id=existing.draft_id, line_item_id=item.line_item_id, line_no=next_line_no,
+                model_code=rec.model_code if rec else None,
+                description=item.description or item.equipment_name,
+                qty=str(item.qty) if item.qty is not None else None,
+                uom=item.uom,
+                technical_spec_text=", ".join(spec_bits) if spec_bits else None,
+            ))
+            added = True
+        if added:
+            db.commit()
         return existing
 
-    revision_no = 0
     draft = QuotationDraft(
-        case_id=case_id, revision_no=revision_no, template_id="STANDARD",
+        case_id=case_id, revision_no=0, template_id="STANDARD",
         status="DRAFT", pricing_blank=True, created_by="system-auto",
     )
     db.add(draft)
     db.flush()
 
-    for item in line_items:
+    for item in approved_items:
         rec = _top_recommendation(item)
         spec_bits = [b for b in [item.moc, item.range_text, item.op_temp, item.op_pressure] if b]
-        line = QuotationLine(
+        db.add(QuotationLine(
             draft_id=draft.draft_id, line_item_id=item.line_item_id, line_no=item.line_no,
             model_code=rec.model_code if rec else None,
             description=item.description or item.equipment_name,
             qty=str(item.qty) if item.qty is not None else None,
             uom=item.uom,
             technical_spec_text=", ".join(spec_bits) if spec_bits else None,
-        )
-        db.add(line)
-
-    old_status = case.status
-    case.status = "QUOTED"
-    db.add(CaseStatusHistory(
-        case_id=case.case_id, from_status=old_status, to_status="QUOTED",
-        changed_by="system-auto",
-    ))
+        ))
 
     db.commit()
     return draft
@@ -364,6 +383,14 @@ def generate_quotation_document(case_id: int, db: Session = Depends(get_db)):
     )
     quotation.docx_blob_uri = docx_rel_path
     quotation.status = "GENERATED"
+
+    if case.status != "QUOTED":
+        old_status = case.status
+        case.status = "QUOTED"
+        db.add(CaseStatusHistory(
+            case_id=case.case_id, from_status=old_status, to_status="QUOTED",
+            changed_by="system-auto",
+        ))
 
     outbound = db.query(OutboundMessage).filter_by(draft_id=quotation.draft_id).first()
     if outbound is None:
@@ -1049,7 +1076,7 @@ def _persist_ai_match(
                 changed_by="ai-rematch",
             )
         )
-    elif case.status in ("NEW", "EXTRACTED", None):
+    elif case.status in ("NEW", "EXTRACTED", "RECEIVED", None):
         old_status = case.status
         case.status = "IN_REVIEW"
         db.add(
@@ -1247,11 +1274,18 @@ def case_communication(case_id: int, db: Session = Depends(get_db)):
             .first()
         )
         if inbound:
+            sib_items = db.query(ExtractedLineItem).filter_by(case_id=sibling.case_id).all()
+            matched = []
+            for it in sib_items:
+                top = _top_recommendation(it)
+                if top and (top.model_code or top.family_code):
+                    matched.append(top.model_code or top.family_code)
             entries.append(CommunicationEntry(
                 entry_type="ENQUIRY_RECEIVED", revision_no=sibling.revision_no or 0,
                 subject=inbound.subject, from_email=inbound.sender_email,
                 body_text=inbound.body_text, timestamp=inbound.received_at,
                 is_current_revision=(sibling.revision_no or 0) == latest_revision_no,
+                matched_products=matched or None,
             ))
 
         outbounds = db.query(OutboundMessage).filter_by(case_id=sibling.case_id).all()
@@ -1367,3 +1401,66 @@ def create_quotation_line(case_id: int, payload: QuotationLineCreateRequest, db:
     db.refresh(new_line)
 
     return QuotationLineOut.model_validate(new_line)
+
+@router.post("/recommendations/{recommendation_id}/approve-as-new-item", response_model=dict)
+def approve_recommendation_as_new_item(recommendation_id: int, db: Session = Depends(get_db), current_user=Depends(get_current_user)):
+    """
+    Approves an alternate suggested match WITHOUT replacing the current
+    top pick for that line item — instead it clones the line item so
+    both products end up quoted side by side. Used when an engineer
+    wants more than one suggested model included in the same quotation.
+    """
+    rec = db.get(ProductRecommendation, recommendation_id)
+    if rec is None:
+        raise HTTPException(404, "Recommendation not found")
+
+    original_item = db.get(ExtractedLineItem, rec.line_item_id)
+    if original_item is None:
+        raise HTTPException(404, "Line item not found")
+
+    max_line_no = db.query(func.max(ExtractedLineItem.line_no)).filter_by(case_id=rec.case_id).scalar() or 0
+    new_item = ExtractedLineItem(
+        case_id=rec.case_id,
+        line_no=max_line_no + 1,
+        customer_tag_no=original_item.customer_tag_no,
+        description=rec.family_code or rec.model_code or original_item.description,
+        product_type=rec.family_code or original_item.product_type,
+        qty=original_item.qty,
+        uom=original_item.uom,
+        moc=original_item.moc,
+        range_text=original_item.range_text,
+    )
+    db.add(new_item)
+    db.flush()
+
+    new_rec = ProductRecommendation(
+        case_id=rec.case_id,
+        line_item_id=new_item.line_item_id,
+        rank_no=1,
+        match_level=rec.match_level,
+        family_code=rec.family_code,
+        model_code=rec.model_code,
+        confidence=rec.confidence,
+        rationale=rec.rationale,
+        is_selected_by_engineer=True,
+        decided_by=current_user.display_name,
+    )
+    db.add(new_rec)
+
+    case = db.get(InquiryCase, rec.case_id)
+    if case and case.status in ("RECEIVED", "NEW", "EXTRACTED", None):
+        old_status = case.status
+        case.status = "IN_REVIEW"
+        db.add(CaseStatusHistory(
+            case_id=case.case_id, from_status=old_status or "RECEIVED", to_status="IN_REVIEW",
+            changed_by="engineer",
+        ))
+
+    db.commit()
+
+    quotation = _maybe_create_quotation_draft(db, rec.case_id)
+    return {
+        "status": "approved",
+        "model_code": new_rec.model_code or new_rec.family_code,
+        "quotation_generated": quotation is not None,
+    }

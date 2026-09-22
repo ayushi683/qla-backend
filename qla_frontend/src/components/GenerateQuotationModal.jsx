@@ -8,7 +8,7 @@ function formatCurrency(n) {
 
 export default function GenerateQuotationModal({ caseId, lines: initialLines, onClose, onGenerated }) {
   const [lines, setLines] = useState(
-    initialLines.map((l) => ({ ...l, _unitPrice: "" }))
+    initialLines.map((l) => ({ ...l, _unitPrice: "", customer_tag_no: l.customer_tag_no || "" }))
   );
   const [discountPct, setDiscountPct] = useState("");
   const [taxPct, setTaxPct] = useState("");
@@ -28,6 +28,7 @@ export default function GenerateQuotationModal({ caseId, lines: initialLines, on
     const newLine = {
       line_item_id: newItemId,
       line_no: nextLineNo,
+      customer_tag_no: "",
       model_code: "",
       description: "",
       qty: "1",
@@ -66,17 +67,32 @@ export default function GenerateQuotationModal({ caseId, lines: initialLines, on
         });
       }
 
+      const createdCustomLines = [];
+      for (const l of lines.filter((l) => l.isCustomAdded)) {
+        const created = await api.createQuotationLine(caseId, {
+          model_code: l.model_code,
+          description: l.description,
+          qty: l.qty,
+          uom: l.uom,
+          technical_spec_text: l.technical_spec_text,
+        });
+        createdCustomLines.push({ ...l, line_item_id: created.line_item_id });
+      }
+
+      const allLinesForPricing = [
+        ...lines.filter((l) => !l.isCustomAdded),
+        ...createdCustomLines,
+      ];
+
       await api.savePricing(caseId, {
         currency_code: "INR",
         discount_pct: discountPct || 0,
         tax_pct: taxPct || 0,
         freight_amount: freightAmount || 0,
-        lines: lines
-          .filter((l) => !l.isCustomAdded)
-          .map((l) => ({
-            quote_line_id: l.line_item_id,
-            unit_price: l._unitPrice || 0,
-          })),
+        lines: allLinesForPricing.map((l) => ({
+          quote_line_id: l.line_item_id,
+          unit_price: l._unitPrice || 0,
+        })),
       });
 
       const result = await api.generateQuotation(caseId);
@@ -130,16 +146,24 @@ export default function GenerateQuotationModal({ caseId, lines: initialLines, on
             <table className="qgm-table">
               <thead>
                 <tr>
-                  <th style={{ width: 140 }}>Model</th>
+                  <th style={{ width: 90 }}>Tag No.</th>
+                  <th style={{ width: 130 }}>Model</th>
                   <th>Description</th>
                   <th style={{ width: 70 }}>Qty</th>
-                  <th style={{ width: 120 }}>Unit price</th>
-                  <th style={{ width: 44, textAlign: "center" }}></th>
+                  <th style={{ width: 110 }}>Unit price</th>
+                  <th style={{ width: 40, textAlign: "center" }}></th>
                 </tr>
               </thead>
               <tbody>
                 {lines.map((l) => (
                   <tr key={l.line_item_id}>
+                    <td>
+                      <input
+                        value={l.customer_tag_no || ""}
+                        onChange={(e) => updateLineField(l.line_item_id, "customer_tag_no", e.target.value)}
+                        placeholder="Tag no."
+                      />
+                    </td>
                     <td>
                       <input
                         value={l.model_code || ""}
@@ -171,26 +195,24 @@ export default function GenerateQuotationModal({ caseId, lines: initialLines, on
                       />
                     </td>
                     <td style={{ textAlign: "center", verticalAlign: "middle" }}>
-                      {l.isCustomAdded ? (
-                        <button
-                          type="button"
-                          onClick={() => handleRemoveLine(l.line_item_id)}
-                          title="Remove this item"
-                          style={{
-                            background: "transparent",
-                            border: "none",
-                            color: "var(--danger, #b3261e)",
-                            cursor: "pointer",
-                            padding: "4px",
-                            display: "inline-flex",
-                            alignItems: "center",
-                            justifyContent: "center",
-                            borderRadius: 4,
-                          }}
-                        >
-                          <Trash2 size={15} />
-                        </button>
-                      ) : null}
+                      <button
+                        type="button"
+                        onClick={() => handleRemoveLine(l.line_item_id)}
+                        title="Remove this item"
+                        style={{
+                          background: "transparent",
+                          border: "none",
+                          color: "var(--danger, #b3261e)",
+                          cursor: "pointer",
+                          padding: "4px",
+                          display: "inline-flex",
+                          alignItems: "center",
+                          justifyContent: "center",
+                          borderRadius: 4,
+                        }}
+                      >
+                        <Trash2 size={15} />
+                      </button>
                     </td>
                   </tr>
                 ))}
