@@ -27,18 +27,6 @@ function statusClass(status) {
   return `cases-status-badge cases-status-${(status || "").toLowerCase()}`;
 }
 
-function formatAiResult(result) {
-  const identified = result.items_identified ?? result.items_matched ?? 0;
-  const matched = result.items_matched ?? 0;
-  if (result.needs_details || result.decision === "PRODUCTS_MATCHED_NEED_DETAILS") {
-    return `${identified} product${identified === 1 ? "" : "s"} identified — model details needed`;
-  }
-  if (result.decision === "PRODUCTS_MATCHED") {
-    return `${matched} product${matched === 1 ? "" : "s"} matched`;
-  }
-  return `${result.decision || "done"} (${identified} identified)`;
-}
-
 function confidenceTier(conf) {
   if (conf === null || conf === undefined) return "none";
   const n = parseFloat(conf);
@@ -51,16 +39,16 @@ function getPageNumbers(current, total) {
   if (total <= 7) {
     return Array.from({ length: total }, (_, i) => i + 1);
   }
-  const delta = 1;
-  const range = [];
-  for (let i = Math.max(2, current - delta); i <= Math.min(total - 1, current + delta); i++) {
-    range.push(i);
+  // When near beginning: show 5 pages at start, then ellipsis and last page
+  if (current <= 4) {
+    return [1, 2, 3, 4, 5, "...", total];
   }
-  if (current - delta > 2) range.unshift("...");
-  if (current + delta < total - 1) range.push("...");
-  range.unshift(1);
-  if (total > 1) range.push(total);
-  return range;
+  // When near end: show first page, ellipsis, and last 5 pages
+  if (current >= total - 3) {
+    return [1, "...", total - 4, total - 3, total - 2, total - 1, total];
+  }
+  // When in middle: show 1 ... current-1, current, current+1 ... total
+  return [1, "...", current - 1, current, current + 1, "...", total];
 }
 
 export default function CasesList() {
@@ -69,37 +57,42 @@ export default function CasesList() {
   const [dateFrom, setDateFrom] = useState("");
   const [dateTo, setDateTo] = useState("");
   const [statusFilter, setStatusFilter] = useState("all");
-  const [page, setPage] = useState(() => {
+  const [page, setPage] = useState(1);
+  const [pageSize, setPageSize] = useState(15);
+  const [jumpPage, setJumpPage] = useState("");
+
+  // Clear any stale sessionStorage that may have stored 50 or other large page sizes
+  useEffect(() => {
     try {
-      const saved = sessionStorage.getItem("qla_cases_page");
-      const parsed = parseInt(saved, 10);
-      return Number.isInteger(parsed) && parsed > 0 ? parsed : 1;
-    } catch {
-      return 1;
-    }
-  });
+      sessionStorage.setItem("qla_cases_pagesize", "15");
+      sessionStorage.setItem("qla_cases_page", "1");
+    } catch {}
+  }, []);
+
   const [aiRunningId, setAiRunningId] = useState(null);
   const [aiResults, setAiResults] = useState({});
   const [selectedIds, setSelectedIds] = useState(new Set());
   const [batchRunning, setBatchRunning] = useState(false);
   const [batchProgress, setBatchProgress] = useState(null);
   const tableWrapRef = useRef(null);
-  const PAGE_SIZE = 15;
 
-  // Real-time status counts derived from loaded cases
+  // Directly use real cases connected from backend API
+  const allCases = useMemo(() => {
+    return Array.isArray(cases) ? cases : [];
+  }, [cases]);
+
+  // Real-time status counts derived from all available cases
   const statusCounts = useMemo(() => {
-    if (!cases) return { all: 0, RECEIVED: 0, IN_REVIEW: 0, QUOTED: 0 };
-    const counts = { all: cases.length, RECEIVED: 0, IN_REVIEW: 0, QUOTED: 0 };
-    cases.forEach((c) => {
+    const counts = { all: allCases.length, RECEIVED: 0, IN_REVIEW: 0, QUOTED: 0 };
+    allCases.forEach((c) => {
       const s = (c.status || "").toUpperCase();
       if (counts[s] !== undefined) counts[s]++;
     });
     return counts;
-  }, [cases]);
+  }, [allCases]);
 
   const filtered = useMemo(() => {
-    if (!cases) return [];
-    let rows = cases;
+    let rows = allCases;
     if (search.trim()) {
       const q = search.toLowerCase();
       rows = rows.filter(
@@ -119,11 +112,14 @@ export default function CasesList() {
       rows = rows.filter((c) => (c.status || "").toUpperCase() === statusFilter);
     }
     return rows;
-  }, [cases, search, dateFrom, dateTo, statusFilter]);
+  }, [allCases, search, dateFrom, dateTo, statusFilter]);
 
-  const totalPages = Math.max(1, Math.ceil(filtered.length / PAGE_SIZE));
-  const safePage = Math.min(page, totalPages);
-  const paginated = filtered.slice((safePage - 1) * PAGE_SIZE, safePage * PAGE_SIZE);
+  const totalPages = Math.max(1, Math.ceil(filtered.length / pageSize));
+  const paginated = useMemo(() => {
+    const safePage = Math.max(1, Math.min(page, totalPages));
+    const start = (safePage - 1) * pageSize;
+    return filtered.slice(start, start + pageSize);
+  }, [filtered, page, pageSize, totalPages]);
 
   const isFirstRender = useRef(true);
   useEffect(() => {
@@ -139,17 +135,16 @@ export default function CasesList() {
     }
   }, [search, dateFrom, dateTo, statusFilter]);
 
-useEffect(() => {
-  if (cases === null) return; // data still loading — don't clamp yet
-  if (totalPages > 0 && page > totalPages) {
-    setPage(totalPages);
-    try {
-      sessionStorage.setItem("qla_cases_page", String(totalPages));
-    } catch {
-      // ignore
+  useEffect(() => {
+    if (totalPages > 0 && page > totalPages) {
+      setPage(totalPages);
+      try {
+        sessionStorage.setItem("qla_cases_page", String(totalPages));
+      } catch {
+        // ignore
+      }
     }
-  }
-}, [cases, page, totalPages]);
+  }, [page, totalPages]);
 
   const handlePageChange = (newPage) => {
     if (newPage < 1 || newPage > totalPages || newPage === page) return;
@@ -184,12 +179,6 @@ useEffect(() => {
     setDateFrom("");
     setDateTo("");
     setStatusFilter("all");
-    setPage(1);
-    try {
-      sessionStorage.setItem("qla_cases_page", "1");
-    } catch {
-      // ignore
-    }
   }
 
   async function handleRunAiMatch(caseId) {
@@ -258,7 +247,7 @@ useEffect(() => {
             <h1 className="page-title" style={{ margin: 0 }}>Inquiry Cases</h1>
             <span className="cases-count-badge">
               <Layers size={13} />
-              {cases ? `${cases.length} Total Records` : "Loading..."}
+              {allCases.length} Total Records
             </span>
           </div>
           <p className="page-sub" style={{ marginTop: 4 }}>
@@ -402,7 +391,7 @@ useEffect(() => {
         )}
 
         {/* Loading State */}
-        {loading && !cases ? (
+        {loading && allCases.length === 0 ? (
           <div className="cases-table-card">
             <div className="cases-empty-card">
               <RefreshCw size={28} className="spin" style={{ color: "var(--brand)" }} />
@@ -428,6 +417,7 @@ useEffect(() => {
                     <th style={{ width: 130 }}>Status</th>
                     <th style={{ minWidth: 220 }}>Customer & Project</th>
                     <th style={{ width: 130 }}>Received</th>
+                    {/* Hidden for now: <th style={{ width: 150 }}>AI Match Conf.</th> */}
                     <th style={{ width: 200, textAlign: "center" }}>Actions</th>
                   </tr>
                 </thead>
@@ -497,7 +487,30 @@ useEffect(() => {
                           {formatDate(c.enq_received_at)}
                         </td>
 
-                        {/* 6. Actions */}
+                        {/* 6. AI Match Confidence (Hidden for now)
+                        <td>
+                          {conf !== null && conf !== undefined ? (
+                            <span className={`cases-conf-pill cases-conf-${tier}`}>
+                              <span
+                                className="cases-dot"
+                                style={{
+                                  background:
+                                    tier === "high"
+                                      ? "#10b981"
+                                      : tier === "mid"
+                                      ? "#f59e0b"
+                                      : "#ef4444"
+                                }}
+                              />
+                              {Math.round(parseFloat(conf) * 100)}% Match
+                            </span>
+                          ) : (
+                            <span className="cases-conf-pill cases-conf-none">—</span>
+                          )}
+                        </td>
+                        */}
+
+                        {/* 7. Actions */}
                         <td>
                           <div className="cases-action-group">
                             <Link
@@ -532,7 +545,7 @@ useEffect(() => {
                               >
                                 {aiResults[c.case_id].status === "error"
                                   ? aiResults[c.case_id].raw_message
-                                  : formatAiResult(aiResults[c.case_id])}
+                                  : `${aiResults[c.case_id].decision} (${aiResults[c.case_id].items_matched || 0} matched)`}
                               </span>
                             </div>
                           )}
@@ -549,20 +562,41 @@ useEffect(() => {
               <div className="cases-pagination-wrap">
                 <div className="cases-pagination-info">
                   <span>
-                    Showing <span className="cases-pagination-num">{(safePage - 1) * PAGE_SIZE + 1}</span>–
-                    <span className="cases-pagination-num">{Math.min(safePage * PAGE_SIZE, filtered.length)}</span> of{" "}
+                    Showing <span className="cases-pagination-num">{(page - 1) * pageSize + 1}</span>–
+                    <span className="cases-pagination-num">{Math.min(page * pageSize, filtered.length)}</span> of{" "}
                     <span className="cases-pagination-num">{filtered.length}</span> cases
                   </span>
-                  <span className="cases-pagination-badge">15 / page</span>
+                  
+                  {/* Interactive Page Size Selector */}
+                  <div className="cases-pagesize-wrap">
+                    <select
+                      className="cases-pagesize-select"
+                      value={pageSize}
+                      onChange={(e) => {
+                        const newSize = Number(e.target.value);
+                        setPageSize(newSize);
+                        setPage(1);
+                        try {
+                          sessionStorage.setItem("qla_cases_pagesize", String(newSize));
+                          sessionStorage.setItem("qla_cases_page", "1");
+                        } catch {}
+                      }}
+                      title="Select records per page"
+                    >
+                      <option value={15}>15 / page (Default)</option>
+                      <option value={10}>10 / page</option>
+                      <option value={20}>20 / page</option>
+                    </select>
+                  </div>
                 </div>
 
-                {totalPages > 1 && (
+                <div className="cases-pagination-controls-group">
                   <div className="cases-pagination-btns">
                     {/* First Page */}
                     <button
                       type="button"
                       className="cases-page-btn cases-page-btn-nav"
-                      disabled={safePage === 1}
+                      disabled={page <= 1}
                       onClick={() => handlePageChange(1)}
                       title="First page"
                       aria-label="First page"
@@ -574,8 +608,8 @@ useEffect(() => {
                     <button
                       type="button"
                       className="cases-page-btn cases-page-btn-nav"
-                      disabled={safePage === 1}
-                      onClick={() => handlePageChange(safePage - 1)}
+                      disabled={page <= 1}
+                      onClick={() => handlePageChange(page - 1)}
                       title="Previous page"
                       aria-label="Previous page"
                     >
@@ -584,7 +618,7 @@ useEffect(() => {
                     </button>
 
                     {/* Page Numbers */}
-                    {getPageNumbers(safePage, totalPages).map((p, i) =>
+                    {getPageNumbers(page, totalPages).map((p, i) =>
                       p === "..." ? (
                         <span key={"dots-" + i} className="cases-pagination-dots">
                           …
@@ -593,9 +627,9 @@ useEffect(() => {
                         <button
                           key={p}
                           type="button"
-                          className={`cases-page-btn ${p === safePage ? "active" : ""}`}
+                          className={`cases-page-btn ${p === page ? "active" : ""}`}
                           onClick={() => handlePageChange(p)}
-                          aria-current={p === safePage ? "page" : undefined}
+                          aria-current={p === page ? "page" : undefined}
                         >
                           {p}
                         </button>
@@ -606,8 +640,8 @@ useEffect(() => {
                     <button
                       type="button"
                       className="cases-page-btn cases-page-btn-nav"
-                      disabled={safePage === totalPages}
-                      onClick={() => handlePageChange(safePage + 1)}
+                      disabled={page >= totalPages}
+                      onClick={() => handlePageChange(page + 1)}
                       title="Next page"
                       aria-label="Next page"
                     >
@@ -619,7 +653,7 @@ useEffect(() => {
                     <button
                       type="button"
                       className="cases-page-btn cases-page-btn-nav"
-                      disabled={safePage === totalPages}
+                      disabled={page >= totalPages}
                       onClick={() => handlePageChange(totalPages)}
                       title="Last page"
                       aria-label="Last page"
@@ -627,7 +661,45 @@ useEffect(() => {
                       <ChevronsRight size={15} />
                     </button>
                   </div>
-                )}
+
+                  {/* Quick Jump Input */}
+                  {totalPages > 1 && (
+                    <div className="cases-page-jump-box">
+                      <span>Go to</span>
+                      <input
+                        type="number"
+                        min={1}
+                        max={totalPages}
+                        value={jumpPage}
+                        onChange={(e) => setJumpPage(e.target.value)}
+                        onKeyDown={(e) => {
+                          if (e.key === "Enter") {
+                            const val = parseInt(jumpPage, 10);
+                            if (val >= 1 && val <= totalPages) {
+                              handlePageChange(val);
+                              setJumpPage("");
+                            }
+                          }
+                        }}
+                        placeholder={String(page)}
+                        className="cases-jump-input"
+                      />
+                      <button
+                        type="button"
+                        className="cases-jump-btn"
+                        onClick={() => {
+                          const val = parseInt(jumpPage, 10);
+                          if (val >= 1 && val <= totalPages) {
+                            handlePageChange(val);
+                            setJumpPage("");
+                          }
+                        }}
+                      >
+                        Go
+                      </button>
+                    </div>
+                  )}
+                </div>
               </div>
             )}
           </div>
