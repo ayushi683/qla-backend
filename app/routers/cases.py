@@ -1,5 +1,6 @@
 import os
 import re
+from app.models.feedback import FeedbackEvent
 from datetime import datetime as _dt, timezone
 from decimal import Decimal
 from fastapi import APIRouter, Depends, HTTPException
@@ -36,8 +37,9 @@ from app.schemas import (
     EnquiryEmailOut, StatusHistoryEntry, EmailUpdateRequest, RevisionSummary, QtnGroupOut,
     QuotationLineUpdateRequest, QuotationLineCreateRequest, DocumentOut, PricingUpdateRequest,
     PricingSnapshotOut, PricingLineOut, CommunicationEntry, BulkAiMatchRequest,
-    BulkAiMatchResponse, BulkAiMatchResultItem,
+    BulkAiMatchResponse, BulkAiMatchResultItem, FeedbackEventRequest
 )
+
 
 router = APIRouter(prefix="/api", tags=["cases"], dependencies=[Depends(get_current_user)])
 
@@ -1854,3 +1856,29 @@ def approve_recommendation_as_new_item(recommendation_id: int, db: Session = Dep
         "model_code": new_rec.model_code or new_rec.family_code,
         "quotation_generated": quotation is not None,
     }
+
+@router.post("/cases/{case_id}/feedback", response_model=dict)
+def submit_feedback(case_id: int, payload: FeedbackEventRequest, db: Session = Depends(get_db), current_user=Depends(get_current_user)):
+    """
+    Captures why an engineer rejected or edited an AI-suggested match —
+    feeds Ninad's AI-improvement feedback loop. Called right after a
+    Reject or Edit action, from a small inline form on the match card.
+    """
+    case = db.get(InquiryCase, case_id)
+    if case is None:
+        raise HTTPException(404, "Case not found")
+
+    event = FeedbackEvent(
+        case_id=case_id,
+        line_item_id=payload.line_item_id,
+        recommendation_id=payload.recommendation_id,
+        ai_model_code=payload.ai_model_code,
+        engineer_model_code=payload.engineer_model_code,
+        reason_code=payload.reason_code,
+        comment=payload.comment,
+        created_by=current_user.display_name,
+    )
+    db.add(event)
+    db.commit()
+
+    return {"status": "recorded", "feedback_id": event.feedback_id}

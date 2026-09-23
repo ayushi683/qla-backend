@@ -338,6 +338,11 @@ export default function CaseDetail() {
           <div className="overview-card" style={{ marginBottom: 20 }}>
             <div className="overview-card-head">
               <h3 className="modal-section-heading" style={{ margin: 0 }}>Case Information</h3>
+              {caseData.status !== "RECEIVED" && (
+                <span className="state-pill" style={{ background: "var(--success-tint)", color: "var(--success)", whiteSpace: "nowrap" }}>
+                  ✓ Query already run
+                </span>
+              )}
             </div>
             {aiError && <div className="flash flash-error" style={{ marginBottom: 12 }}>{aiError}</div>}
             {aiMessage && !aiError && (

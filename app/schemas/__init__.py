@@ -170,6 +170,14 @@ class EditRecommendationRequest(BaseModel):
     model_code: Optional[str] = None
     rationale: Optional[str] = None
 
+class FeedbackEventRequest(BaseModel):
+    line_item_id: Optional[int] = None
+    recommendation_id: Optional[int] = None
+    ai_model_code: Optional[str] = None
+    engineer_model_code: Optional[str] = None
+    reason_code: Optional[str] = None
+    comment: Optional[str] = None
+
 
 class CaseSummaryOut(BaseModel):
     model_config = _CONFIG
