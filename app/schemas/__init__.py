@@ -155,6 +155,7 @@ class OutboundMessageOut(BaseModel):
 class CaseDetailOut(CaseOut):
     line_items: List[LineItemOut] = []
     quotation: Optional[QuotationOut] = None
+    ai_block_message: Optional[str] = None
 
 
 class QuotationDetailOut(BaseModel):

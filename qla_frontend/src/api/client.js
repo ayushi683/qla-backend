@@ -1,4 +1,5 @@
-const API_BASE = import.meta.env.VITE_API_BASE || "http://localhost:8000";
+// Dev: same-origin /api → Vite proxy → qla-backend :8000 (avoids CORS / IPv6 fetch errors).
+const API_BASE = import.meta.env.VITE_API_BASE ?? (import.meta.env.DEV ? "" : "http://127.0.0.1:8000");
 
 function getToken() {
   return localStorage.getItem("qla_token");
@@ -10,11 +11,19 @@ async function request(path, { method = "GET", body, headers = {}, isFormData = 
   if (token) finalHeaders["Authorization"] = `Bearer ${token}`;
   if (!isFormData && body !== undefined) finalHeaders["Content-Type"] = "application/json";
 
-  const res = await fetch(`${API_BASE}${path}`, {
-    method,
-    headers: finalHeaders,
-    body: body !== undefined ? (isFormData ? body : JSON.stringify(body)) : undefined,
-  });
+  let res;
+  try {
+    res = await fetch(`${API_BASE}${path}`, {
+      method,
+      headers: finalHeaders,
+      body: body !== undefined ? (isFormData ? body : JSON.stringify(body)) : undefined,
+    });
+  } catch (err) {
+    const dest = `${API_BASE || window.location.origin}${path}`;
+    throw new Error(
+      `Cannot reach qla-backend at ${dest}. Start it with: uvicorn app.main:app --reload --host 127.0.0.1 --port 8000`
+    );
+  }
 
   if (res.status === 401) {
     localStorage.removeItem("qla_token");
