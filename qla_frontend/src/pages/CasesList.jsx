@@ -561,7 +561,9 @@ export default function CasesList() {
                               >
                                 {aiResults[c.case_id].status === "error"
                                   ? aiResults[c.case_id].raw_message
-                                  : `${aiResults[c.case_id].decision} (${aiResults[c.case_id].items_matched || 0} matched)`}
+                                  : aiResults[c.case_id].decision === "DELETED" || aiResults[c.case_id].status === "skipped"
+                                    ? (aiResults[c.case_id].raw_message || "This enquiry is deleted.")
+                                    : `${aiResults[c.case_id].decision} (${aiResults[c.case_id].items_matched || 0} matched)`}
                               </span>
                             </div>
                           )}

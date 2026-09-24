@@ -57,8 +57,22 @@ function formatBytes(n) {
 }
 
 function formatAiResult(result) {
+  if (result.raw_message && (
+    result.status === "skipped"
+    || result.decision === "DELETED"
+    || result.decision === "NO_SUPPORTED_PRODUCT"
+    || result.decision === "NON_TECHTROL_PRODUCT"
+    || result.decision === "IRRELEVANT"
+  )) {
+    return result.raw_message;
+  }
   const identified = result.items_identified ?? result.items_matched ?? 0;
   const matched = result.items_matched ?? 0;
+  const models = (result.matched_models || []).filter(Boolean);
+  if (matched > 0 && (result.decision === "PRODUCTS_MATCHED" || models.length > 0)) {
+    const label = `${matched} product${matched === 1 ? "" : "s"} matched`;
+    return models.length ? `${label}: ${models.join(", ")}` : label;
+  }
   if (result.needs_details || result.decision === "PRODUCTS_MATCHED_NEED_DETAILS") {
     return `${identified} product${identified === 1 ? "" : "s"} identified — model details needed`;
   }
@@ -425,12 +439,17 @@ export default function CaseDetail() {
               <p>{aiRunning ? "Running AI match on enquiry files…" : "Refreshing products & matching…"}</p>
             </div>
           )}
-          <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 12 }}>
-            <p className="page-sub" style={{ margin: 0 }}>{itemsToReview} of {caseData.line_items?.length || 0} items need a decision</p>
-          </div>
+          {!(aiMessage && aiMessage === "This enquiry is deleted.") && (
+            <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 12 }}>
+              <p className="page-sub" style={{ margin: 0 }}>{itemsToReview} of {caseData.line_items?.length || 0} items need a decision</p>
+            </div>
+          )}
+          {aiMessage && !aiError && (
+            <div className="flash flash-info" style={{ marginBottom: 12 }}>{aiMessage}</div>
+          )}
           {matchingBusy && !caseData.line_items?.length ? (
             <div className="loading-state">Fetching latest match results…</div>
-          ) : caseData.line_items && caseData.line_items.length > 0 ? (
+          ) : aiMessage === "This enquiry is deleted." ? null : caseData.line_items && caseData.line_items.length > 0 ? (
             caseData.line_items.map((item) => (
               <ProductMatchCard
                 key={item.line_item_id}

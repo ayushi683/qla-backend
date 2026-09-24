@@ -16,6 +16,13 @@ function confidencePercent(conf) {
   return Math.round(parseFloat(conf) * 100);
 }
 
+function shownModel(rec) {
+  const code = String(rec?.model_code || "").trim();
+  const family = String(rec?.family_code || "").trim();
+  if (!code || code.toUpperCase() === family.toUpperCase()) return "—";
+  return code;
+}
+
 export default function ReviewCard({ item, showCase = false, onChanged }) {
   const navigate = useNavigate();
   const [editing, setEditing] = useState(false);
@@ -111,7 +118,7 @@ export default function ReviewCard({ item, showCase = false, onChanged }) {
         <div className="match-panel">
           <div className="match-main">
             <div className="match-model">
-              <code>{topRec.model_code || topRec.family_code || "—"}</code>
+              <code>{shownModel(topRec)}</code>
               <span className={`confidence-badge ${confidenceClass(topRec.confidence)}`}>
                 {confidencePercent(topRec.confidence) !== null
                   ? `${confidencePercent(topRec.confidence)}% Match Quality`
@@ -156,7 +163,7 @@ export default function ReviewCard({ item, showCase = false, onChanged }) {
                   {otherRecs.map((rec) => (
                     <tr key={rec.recommendation_id}>
                       <td>#{rec.rank_no}</td>
-                      <td><code>{rec.model_code || rec.family_code || "—"}</code></td>
+                      <td><code>{shownModel(rec)}</code></td>
                       <td>
                         <span className={`confidence-badge ${confidenceClass(rec.confidence)}`}>
                           {confidencePercent(rec.confidence) !== null ? `${confidencePercent(rec.confidence)}%` : "—"}

@@ -23,6 +23,13 @@ function confidencePercent(conf) {
   return Math.round(parseFloat(conf) * 100);
 }
 
+
+function shownModel(rec) {
+  const code = String(rec?.model_code || "").trim();
+  const family = String(rec?.family_code || "").trim();
+  if (!code || code.toUpperCase() === family.toUpperCase()) return "—";
+  return code;
+
 function FeedbackForm({ onSubmit, onSkip, busy, alternatives }) {
   const [reasonCode, setReasonCode] = useState("");
   const [comment, setComment] = useState("");
@@ -224,7 +231,7 @@ async function handleAddSelectedAlternates() {
           {item.qty ? `Qty ${item.qty} ${item.uom || ""}` : ""}
         </div>
         <div className="modal-product-match-line">
-          <code>{topRec.model_code || topRec.family_code || "—"}</code>
+          <code>{shownModel(topRec)}</code>
           <span className={`confidence-badge ${confidenceClass(topRec.confidence)}`}>
             {confidencePercent(topRec.confidence) !== null ? `${confidencePercent(topRec.confidence)}%` : "No score"}
           </span>
@@ -283,7 +290,7 @@ async function handleAddSelectedAlternates() {
             const alreadyAdded = addedAltIds.has(rec.recommendation_id);
             return (
               <div className="modal-alt-row" key={rec.recommendation_id}>
-                <code>{rec.model_code || rec.family_code || "—"}</code>
+                <code>{shownModel(rec)}</code>
                 <span className={`confidence-badge ${confidenceClass(rec.confidence)}`}>
                   {confidencePercent(rec.confidence) !== null ? `${confidencePercent(rec.confidence)}%` : "—"}
                 </span>

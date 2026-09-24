@@ -14,8 +14,19 @@ DATABASE_URL = os.environ.get(
     "DATABASE_URL", f"sqlite:///{os.path.join(BASE_DIR, 'instance', 'qla.db')}"
 )
 
-connect_args = {"check_same_thread": False} if DATABASE_URL.startswith("sqlite") else {}
-engine = create_engine(DATABASE_URL, connect_args=connect_args)
+if DATABASE_URL.startswith("sqlite"):
+    connect_args = {"check_same_thread": False}
+    engine = create_engine(DATABASE_URL, connect_args=connect_args)
+else:
+    # pyodbc login timeout (seconds) — a hung SQL handshake used to freeze /api/auth/login
+    connect_args = {"timeout": 8}
+    engine = create_engine(
+        DATABASE_URL,
+        connect_args=connect_args,
+        pool_pre_ping=True,
+        pool_timeout=10,
+        pool_recycle=1800,
+    )
 SessionLocal = sessionmaker(autocommit=False, autoflush=False, bind=engine)
 
 

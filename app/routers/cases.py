@@ -19,6 +19,7 @@ from app.models.outbound import OutboundMessage
 from app.models.email import EmailMessage
 from app.models.pricing import PricingSnapshot, PricingLine
 from app.ai_client import AiMatchError, identify_product
+from app.inquiry_gate import block_message, status_for_case
 from app.enquiry_documents import (
     list_related_enquiry_documents,
     load_ai_enquiry_files,
@@ -56,6 +57,30 @@ def _top_recommendation(line_item):
 
 def _line_item_to_out(item) -> LineItemOut:
     return LineItemOut.model_validate(item)
+
+
+def _drop_blocked_match(db: Session, case: InquiryCase) -> str | None:
+    """Deleted enquiries keep no product cards and are not sent to the model."""
+    status = status_for_case(case.qtnno, case.internal_ref)
+    message = block_message(status)
+    if not message:
+        return None
+    changed = False
+    for rec in db.query(ProductRecommendation).filter_by(case_id=case.case_id).all():
+        db.delete(rec)
+        changed = True
+    for item in db.query(ExtractedLineItem).filter_by(case_id=case.case_id).all():
+        quoted = db.query(QuotationLine).filter_by(line_item_id=item.line_item_id).first()
+        if quoted is not None:
+            continue
+        db.delete(item)
+        changed = True
+    if status == "deleted" and case.exception_type != "DELETED":
+        case.exception_type = "DELETED"
+        changed = True
+    if changed:
+        db.commit()
+    return message
 
 
 def _case_to_out(c, revision_count: int = 1) -> CaseOut:
@@ -1049,17 +1074,30 @@ def _unify_ai_products(result: dict) -> list[dict]:
         alts = [] if (mn and re.search(r"(?i)\s+X\s+", mn)) else _alts_from_family(fam, mn)
         if prev is None or better_sku or (better_conf and (bool(mn) == bool(prev["_model"]))):
             display = mn if (mn and re.search(r"(?i)\s+X\s+", mn)) else str(fam.get("display_name") or family)
-            why = fam.get("why") or []
-            rationale = ", ".join(str(w) for w in why if w) or "Matched by AI model."
+            confirmed = ""
+            for sm in fam.get("suggested_models") or []:
+                notes = str(sm.get("notes") or "")
+                low = notes.lower()
+                if "catalogue chart" in low or "inquiry-named" in low or "catalogue-verified" in low:
+                    confirmed = notes
+                    break
+            why = [
+                str(w)
+                for w in (fam.get("why") or [])
+                if w and not re.search(r"radar|gwr|ultrasonic", str(w), flags=re.I)
+            ]
+            rationale = confirmed or ", ".join(why) or "Matched by AI model."
             if not mn:
                 rationale = (rationale + " — family identified; exact model needs details.")[:1000]
+            if confirmed and mn:
+                alts = []
             unified[key] = {
                 "_family": family.split()[0] if family else family,
                 "_display": display,
                 "_model": mn,
                 "_conf": max(0.0, min(conf, 0.9999)),
                 "_rationale": rationale[:1000],
-                "_needs_details": bool(fam.get("needs_details")) or not mn,
+                "_needs_details": False if (confirmed and mn) else (bool(fam.get("needs_details")) or not mn),
                 "_alts": alts,
             }
 
@@ -1096,7 +1134,7 @@ def _persist_ai_match(
     result: dict,
     *,
     enquiry_title: str | None = None,
-) -> tuple[int, int]:
+) -> tuple[int, int, list[str]]:
     """
     Persist one Products & Matching card per distinct product family.
     Extra SKUs for the same family stay as alternatives on that card.
@@ -1108,7 +1146,7 @@ def _persist_ai_match(
         "PRODUCTS_MATCHED_NEED_DETAILS",
     } or bool(products)
     if not persistable or not products:
-        return (0, 0)
+        return (0, 0, [])
 
     for rec in (
         db.query(ProductRecommendation).filter_by(case_id=case.case_id).all()
@@ -1149,6 +1187,7 @@ def _persist_ai_match(
         line_items.append(line)
 
     sku_matched = 0
+    matched_models: list[str] = []
     for idx, row in enumerate(products):
         line = line_items[idx]
         if not line.qty or line.qty == 0:
@@ -1179,6 +1218,7 @@ def _persist_ai_match(
             db.add(rec)
         if row["_model"]:
             sku_matched += 1
+            matched_models.append(row["_model"])
 
     if case.status == "QUOTED":
         old_status = case.status
@@ -1203,7 +1243,7 @@ def _persist_ai_match(
             )
         )
 
-    return (len(products), sku_matched)
+    return (len(products), sku_matched, matched_models)
 
 
 def _recommendation_family_key(rec: ProductRecommendation) -> str:
@@ -1455,6 +1495,19 @@ def run_ai_match(case_id: int, db: Session = Depends(get_db)):
     if case is None:
         raise HTTPException(404, "Case not found")
 
+    blocked = _drop_blocked_match(db, case)
+    if blocked:
+        return {
+            "status": "skipped",
+            "decision": "DELETED",
+            "items_matched": 0,
+            "items_identified": 0,
+            "needs_details": False,
+            "files_sent": [],
+            "files_skipped_price_quotation": [],
+            "raw_message": blocked,
+        }
+
     files_for_api, skipped = load_ai_enquiry_files(db, case)
     if not files_for_api:
         raise HTTPException(
@@ -1479,7 +1532,31 @@ def run_ai_match(case_id: int, db: Session = Depends(get_db)):
         raise HTTPException(502, exc.message) from exc
 
     decision = result.get("decision")
-    identified, matched_count = _persist_ai_match(
+    if decision in {
+        "DELETED",
+        "NON_TECHTROL_PRODUCT",
+        "NO_SUPPORTED_PRODUCT",
+        "IRRELEVANT",
+    }:
+        for rec in db.query(ProductRecommendation).filter_by(case_id=case.case_id).all():
+            db.delete(rec)
+        for item in db.query(ExtractedLineItem).filter_by(case_id=case.case_id).all():
+            quoted = db.query(QuotationLine).filter_by(line_item_id=item.line_item_id).first()
+            if quoted is None:
+                db.delete(item)
+        db.commit()
+        return {
+            "status": "skipped",
+            "decision": decision,
+            "items_matched": 0,
+            "items_identified": 0,
+            "needs_details": False,
+            "files_sent": [name for name, _b, _t in files_for_api],
+            "files_skipped_price_quotation": skipped,
+            "raw_message": result.get("message") or "",
+        }
+
+    identified, matched_count, matched_models = _persist_ai_match(
         db,
         case,
         result,
@@ -1487,14 +1564,19 @@ def run_ai_match(case_id: int, db: Session = Depends(get_db)):
     )
     db.commit()
     _merge_fps_ecs_line_items(db, case.case_id)
+    if matched_count > 0 and matched_count == identified:
+        decision = "PRODUCTS_MATCHED"
 
     return {
         "status": "done",
         "decision": decision,
         "items_matched": matched_count,
         "items_identified": identified,
-        "needs_details": decision == "PRODUCTS_MATCHED_NEED_DETAILS"
-        or (identified > 0 and matched_count < identified),
+        "matched_models": matched_models,
+        "needs_details": matched_count == 0 and (
+            decision == "PRODUCTS_MATCHED_NEED_DETAILS"
+            or identified > 0
+        ),
         "files_sent": [name for name, _b, _t in files_for_api],
         "files_skipped_price_quotation": skipped,
         "raw_message": result.get("message", ""),
@@ -1594,6 +1676,10 @@ def _run_ai_match_for_case(db: Session, case_id: int) -> BulkAiMatchResultItem:
     if case is None:
         return BulkAiMatchResultItem(case_id=case_id, status="error", error="Case not found")
 
+    blocked = _drop_blocked_match(db, case)
+    if blocked:
+        return BulkAiMatchResultItem(case_id=case_id, status="skipped", error=blocked)
+
     files_for_api, skipped = load_ai_enquiry_files(db, case)
     if not files_for_api:
         return BulkAiMatchResultItem(
@@ -1617,7 +1703,26 @@ def _run_ai_match_for_case(db: Session, case_id: int) -> BulkAiMatchResultItem:
     except AiMatchError as exc:
         return BulkAiMatchResultItem(case_id=case_id, status="error", error=exc.message)
 
-    identified, matched_count = _persist_ai_match(
+    decision = result.get("decision")
+    if decision in {
+        "DELETED",
+        "NON_TECHTROL_PRODUCT",
+        "NO_SUPPORTED_PRODUCT",
+        "IRRELEVANT",
+    }:
+        for rec in db.query(ProductRecommendation).filter_by(case_id=case.case_id).all():
+            db.delete(rec)
+        for item in db.query(ExtractedLineItem).filter_by(case_id=case.case_id).all():
+            if db.query(QuotationLine).filter_by(line_item_id=item.line_item_id).first() is None:
+                db.delete(item)
+        db.commit()
+        return BulkAiMatchResultItem(
+            case_id=case_id,
+            status="skipped",
+            error=result.get("message") or "",
+        )
+
+    identified, matched_count, _matched_models = _persist_ai_match(
         db,
         case,
         result,
