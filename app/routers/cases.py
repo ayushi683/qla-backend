@@ -1801,6 +1801,11 @@ def approve_recommendation_as_new_item(recommendation_id: int, db: Session = Dep
     top pick for that line item — instead it clones the line item so
     both products end up quoted side by side. Used when an engineer
     wants more than one suggested model included in the same quotation.
+
+    Idempotent: if this exact model was already added as an approved
+    extra item for this case (e.g. the request fired twice from a
+    double-click), returns the existing one instead of creating a
+    second duplicate line item.
     """
     rec = db.get(ProductRecommendation, recommendation_id)
     if rec is None:
@@ -1809,6 +1814,29 @@ def approve_recommendation_as_new_item(recommendation_id: int, db: Session = Dep
     original_item = db.get(ExtractedLineItem, rec.line_item_id)
     if original_item is None:
         raise HTTPException(404, "Line item not found")
+
+    existing_clone = (
+        db.query(ProductRecommendation)
+        .join(ExtractedLineItem, ProductRecommendation.line_item_id == ExtractedLineItem.line_item_id)
+        .filter(
+            ExtractedLineItem.case_id == rec.case_id,
+            ProductRecommendation.model_code == rec.model_code,
+            ProductRecommendation.family_code == rec.family_code,
+            ProductRecommendation.is_selected_by_engineer == True,
+            ProductRecommendation.line_item_id != rec.line_item_id,
+        )
+        .first()
+    )
+    if existing_clone is not None:
+        quotation = (
+            db.query(QuotationDraft).filter_by(case_id=rec.case_id)
+            .order_by(QuotationDraft.revision_no.desc()).first()
+        )
+        return {
+            "status": "already_added",
+            "model_code": existing_clone.model_code or existing_clone.family_code,
+            "quotation_generated": quotation is not None,
+        }
 
     max_line_no = db.query(func.max(ExtractedLineItem.line_no)).filter_by(case_id=rec.case_id).scalar() or 0
     new_item = ExtractedLineItem(
@@ -1882,3 +1910,25 @@ def submit_feedback(case_id: int, payload: FeedbackEventRequest, db: Session = D
     db.commit()
 
     return {"status": "recorded", "feedback_id": event.feedback_id}
+
+@router.post("/recommendations/{recommendation_id}/reset", response_model=dict)
+def reset_recommendation_decision(recommendation_id: int, db: Session = Depends(get_db)):
+    """
+    Undo an approve/reject decision, putting the line item back to
+    pending. If this line item had already been added to a quotation
+    draft (because it was approved), that quotation line is removed
+    too — so the Quotation tab stays in sync with the decision.
+    """
+    rec = db.get(ProductRecommendation, recommendation_id)
+    if rec is None:
+        raise HTTPException(404, "Recommendation not found")
+
+    rec.is_selected_by_engineer = None
+    rec.decided_by = None
+
+    quotation_line = db.query(QuotationLine).filter_by(line_item_id=rec.line_item_id).first()
+    if quotation_line is not None:
+        db.delete(quotation_line)
+
+    db.commit()
+    return {"status": "reset"}

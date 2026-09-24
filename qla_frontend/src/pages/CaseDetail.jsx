@@ -8,7 +8,7 @@ import ProductMatchCard from "../components/ProductMatchCard";
 import PdfViewerModal from "../components/PdfViewerModal";
 import GenerateQuotationModal from "../components/GenerateQuotationModal";
 import { topRecommendation } from "../utils/recommendations";
-
+import { topRecommendation as getTopRec } from "../utils/recommendations";
 
 function statusClass(status) {
   return `status-pill status-${(status || "").toLowerCase()}`;
@@ -57,22 +57,8 @@ function formatBytes(n) {
 }
 
 function formatAiResult(result) {
-  if (result.raw_message && (
-    result.status === "skipped"
-    || result.decision === "DELETED"
-    || result.decision === "NO_SUPPORTED_PRODUCT"
-    || result.decision === "NON_TECHTROL_PRODUCT"
-    || result.decision === "IRRELEVANT"
-  )) {
-    return result.raw_message;
-  }
   const identified = result.items_identified ?? result.items_matched ?? 0;
   const matched = result.items_matched ?? 0;
-  const models = (result.matched_models || []).filter(Boolean);
-  if (matched > 0 && (result.decision === "PRODUCTS_MATCHED" || models.length > 0)) {
-    const label = `${matched} product${matched === 1 ? "" : "s"} matched`;
-    return models.length ? `${label}: ${models.join(", ")}` : label;
-  }
   if (result.needs_details || result.decision === "PRODUCTS_MATCHED_NEED_DETAILS") {
     return `${identified} product${identified === 1 ? "" : "s"} identified — model details needed`;
   }
@@ -89,6 +75,56 @@ const TABS = [
   { key: "communication", label: "Communication" },
   { key: "history", label: "History" },
 ];
+
+const BULK_REJECT_REASONS = [
+  { value: "WRONG_MODEL", label: "Wrong model" },
+  { value: "SPEC_MISMATCH", label: "Specification mismatch" },
+  { value: "NOT_MANUFACTURED", label: "Not manufactured" },
+  { value: "OTHER", label: "Other" },
+];
+
+function BulkRejectModal({ count, onClose, onConfirm, busy }) {
+  const [reasonCode, setReasonCode] = useState("");
+  const [comment, setComment] = useState("");
+  const [err, setErr] = useState("");
+
+  function handleConfirm() {
+    if (!reasonCode) {
+      setErr("Select a reason.");
+      return;
+    }
+    onConfirm(reasonCode, comment);
+  }
+
+  return (
+    <div className="modal-overlay" onClick={onClose}>
+      <div className="modal-panel qgm-panel" onClick={(e) => e.stopPropagation()}>
+        <div className="qgm-header">
+          <h3 className="qgm-title">Reject {count} selected items</h3>
+          <button className="qgm-close" onClick={onClose}>×</button>
+        </div>
+        <div className="qgm-body">
+          <p className="qgm-section-label">Reason (applies to all selected)</p>
+          <select className="edit-drawer-select" value={reasonCode} onChange={(e) => setReasonCode(e.target.value)}>
+            <option value="">Select a reason…</option>
+            {BULK_REJECT_REASONS.map((r) => (
+              <option key={r.value} value={r.value}>{r.label}</option>
+            ))}
+          </select>
+          <label className="edit-drawer-label">Comment (optional)</label>
+          <textarea rows={3} className="edit-drawer-textarea" value={comment} onChange={(e) => setComment(e.target.value)} />
+          {err && <div className="flash flash-error" style={{ marginTop: 10 }}>{err}</div>}
+        </div>
+        <div className="qgm-footer">
+          <button className="btn btn-outline" onClick={onClose} disabled={busy}>Cancel</button>
+          <button className="btn btn-reject-solid" onClick={handleConfirm} disabled={busy}>
+            {busy ? "Rejecting…" : `Reject ${count} items`}
+          </button>
+        </div>
+      </div>
+    </div>
+  );
+}
 
 export default function CaseDetail() {
   const { caseId } = useParams();
@@ -122,6 +158,10 @@ export default function CaseDetail() {
   const [productsRefreshing, setProductsRefreshing] = useState(false);
   const [aiError, setAiError] = useState("");
   const [aiMessage, setAiMessage] = useState("");
+
+  const [selectedItems, setSelectedItems] = useState(new Set());
+  const [bulkActing, setBulkActing] = useState(false);
+  const [showBulkRejectModal, setShowBulkRejectModal] = useState(false);
 
   useEffect(() => {
     setAiError("");
@@ -256,6 +296,62 @@ export default function CaseDetail() {
     } finally {
       setAiRunning(false);
       setProductsRefreshing(false);
+    }
+  }
+
+    function toggleItemSelect(lineItemId) {
+    setSelectedItems((prev) => {
+      const next = new Set(prev);
+      if (next.has(lineItemId)) next.delete(lineItemId);
+      else next.add(lineItemId);
+      return next;
+    });
+  }
+
+  async function handleBulkApprove() {
+    setBulkActing(true);
+    try {
+      let anyQuotationGenerated = false;
+      for (const lineItemId of selectedItems) {
+        const lineItem = (caseData.line_items || []).find((i) => i.line_item_id === lineItemId);
+        const top = topRecommendation(lineItem);
+        if (!top || top.is_selected_by_engineer === true) continue;
+        const result = await api.approve(top.recommendation_id);
+        if (result?.quotation_generated) anyQuotationGenerated = true;
+      }
+      setSelectedItems(new Set());
+      await refresh();
+      if (anyQuotationGenerated) handleQuotationReady();
+    } catch (e) {
+      setAiError(e.message || "Bulk approve failed");
+    } finally {
+      setBulkActing(false);
+    }
+  }
+
+  async function handleBulkReject(reasonCode, comment) {
+    setBulkActing(true);
+    try {
+      for (const lineItemId of selectedItems) {
+        const lineItem = (caseData.line_items || []).find((i) => i.line_item_id === lineItemId);
+        const top = topRecommendation(lineItem);
+        if (!top || top.is_selected_by_engineer === false) continue;
+        await api.reject(top.recommendation_id);
+        await api.submitFeedback(caseId, {
+          line_item_id: lineItemId,
+          recommendation_id: top.recommendation_id,
+          ai_model_code: top.model_code || top.family_code,
+          reason_code: reasonCode,
+          comment: comment || null,
+        });
+      }
+      setSelectedItems(new Set());
+      setShowBulkRejectModal(false);
+      await refresh();
+    } catch (e) {
+      setAiError(e.message || "Bulk reject failed");
+    } finally {
+      setBulkActing(false);
     }
   }
 
@@ -439,25 +535,40 @@ export default function CaseDetail() {
               <p>{aiRunning ? "Running AI match on enquiry files…" : "Refreshing products & matching…"}</p>
             </div>
           )}
-          {!(aiMessage && aiMessage === "This enquiry is deleted.") && (
-            <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 12 }}>
-              <p className="page-sub" style={{ margin: 0 }}>{itemsToReview} of {caseData.line_items?.length || 0} items need a decision</p>
-            </div>
-          )}
-          {aiMessage && !aiError && (
-            <div className="flash flash-info" style={{ marginBottom: 12 }}>{aiMessage}</div>
-          )}
+          <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 12 }}>
+            <p className="page-sub" style={{ margin: 0 }}>{itemsToReview} of {caseData.line_items?.length || 0} items need a decision</p>
+          </div>
           {matchingBusy && !caseData.line_items?.length ? (
             <div className="loading-state">Fetching latest match results…</div>
-          ) : aiMessage === "This enquiry is deleted." ? null : caseData.line_items && caseData.line_items.length > 0 ? (
-            caseData.line_items.map((item) => (
+          ) : caseData.line_items && caseData.line_items.length > 0 ? (
+            <>
+              {selectedItems.size > 0 && (
+                <div className="bulk-decision-bar">
+                  <span className="bulk-decision-count">{selectedItems.size} item{selectedItems.size > 1 ? "s" : ""} selected</span>
+                  <button className="btn btn-approve" disabled={bulkActing} onClick={handleBulkApprove}>
+                    {bulkActing ? "Working…" : "Approve Selected"}
+                  </button>
+                  <button className="btn btn-reject" disabled={bulkActing} onClick={() => setShowBulkRejectModal(true)}>
+                    Reject Selected
+                  </button>
+                  <button className="btn btn-edit" disabled={bulkActing} onClick={() => setSelectedItems(new Set())}>
+                    Clear
+                  </button>
+                </div>
+              )}
+              {caseData.line_items.map((item) => (
               <ProductMatchCard
                 key={item.line_item_id}
                 item={item}
                 onChanged={refresh}
                 onQuotationReady={handleQuotationReady}
+                selectable
+                isSelected={selectedItems.has(item.line_item_id)}
+                onToggleSelect={toggleItemSelect}
+                variant="full"
               />
-            ))
+              ))}
+            </>
           ) : (
             <div className="empty-state"><p>No extracted line items for this case yet.</p></div>
           )}
@@ -700,6 +811,15 @@ export default function CaseDetail() {
           lines={quotation.lines}
           onClose={() => setShowGenerateModal(false)}
           onGenerated={handleGenerated}
+        />
+      )}
+
+            {showBulkRejectModal && (
+        <BulkRejectModal
+          count={selectedItems.size}
+          onClose={() => setShowBulkRejectModal(false)}
+          onConfirm={handleBulkReject}
+          busy={bulkActing}
         />
       )}
     </div>

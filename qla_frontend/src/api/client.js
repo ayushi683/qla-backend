@@ -65,6 +65,8 @@ export const api = {
 
   approve: (recId) => request(`/api/recommendations/${recId}/approve`, { method: "POST" }),
   reject: (recId) => request(`/api/recommendations/${recId}/reject`, { method: "POST" }),
+  resetDecision: (recId) =>
+  request(`/api/recommendations/${recId}/reset`, { method: "POST" }),
   edit: (recId, payload) =>
     request(`/api/recommendations/${recId}/edit`, { method: "POST", body: payload }),
   pickAlternative: (lineItemId, recId) =>
