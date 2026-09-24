@@ -6,7 +6,7 @@ from app.models.inquiry_case import InquiryCase
 from app.models.document import InquiryDocument
 from app.models.email import EmailMessage
 
-NETWORK_BASE = r"F:\Data\Common\Quotation"
+NETWORK_BASE = r"I:\Quotation"
 ENQUIRY_DOCS_DIR = os.path.join(os.path.dirname(os.path.abspath(__file__)), "instance", "enquiry_docs")
 
 
