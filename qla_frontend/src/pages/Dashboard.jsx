@@ -712,8 +712,8 @@ export default function Dashboard() {
       if (insightsRes) {
         setInsights(insightsRes);
       }
-      if (Array.isArray(casesRes)) {
-        setAllCases(casesRes);
+    if (Array.isArray(casesRes?.items)) {
+        setRecentCases(casesRes.items.slice(0, 5));
       }
     } catch (err) {
       setError(err.message || "Failed to load dashboard data");

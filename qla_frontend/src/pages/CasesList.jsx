@@ -50,7 +50,6 @@ function getPageNumbers(current, total) {
 
 export default function CasesList() {
   const [searchParams, setSearchParams] = useSearchParams();
-  const { data: cases, loading, error, reload } = usePolling(() => api.cases(), 12000);
   const [search, setSearch] = useState("");
   const [dateFrom, setDateFrom] = useState("");
   const [dateTo, setDateTo] = useState("");
@@ -76,6 +75,10 @@ export default function CasesList() {
     }
   });
   const [jumpPage, setJumpPage] = useState("");
+  const { data: casesPage, loading, error, reload } = usePolling(
+    () => api.cases({ page, page_size: pageSize, search, status: statusFilter, date_from: dateFrom, date_to: dateTo }),
+    12000
+  );
 
   useEffect(() => {
     try {
@@ -94,8 +97,8 @@ export default function CasesList() {
   const tableWrapRef = useRef(null);
 
   const allCases = useMemo(() => {
-    return Array.isArray(cases) ? cases : [];
-  }, [cases]);
+    return Array.isArray(casesPage?.items) ? casesPage.items : [];
+  }, [casesPage]);
 
   const statusCounts = useMemo(() => {
     const counts = { all: allCases.length, RECEIVED: 0, IN_REVIEW: 0, QUOTED: 0 };
@@ -106,35 +109,9 @@ export default function CasesList() {
     return counts;
   }, [allCases]);
 
-  const filtered = useMemo(() => {
-    let rows = allCases;
-    if (search.trim()) {
-      const q = search.toLowerCase();
-      rows = rows.filter(
-        (c) =>
-          (c.internal_ref || "").toLowerCase().includes(q) ||
-          (c.customer_name || "").toLowerCase().includes(q) ||
-          (c.project_name || "").toLowerCase().includes(q)
-      );
-    }
-    if (dateFrom) {
-      rows = rows.filter((c) => c.enq_received_at && c.enq_received_at.slice(0, 10) >= dateFrom);
-    }
-    if (dateTo) {
-      rows = rows.filter((c) => c.enq_received_at && c.enq_received_at.slice(0, 10) <= dateTo);
-    }
-    if (statusFilter !== "all") {
-      rows = rows.filter((c) => (c.status || "").toUpperCase() === statusFilter);
-    }
-    return rows;
-  }, [allCases, search, dateFrom, dateTo, statusFilter]);
-
-  const totalPages = Math.max(1, Math.ceil(filtered.length / pageSize));
-  const paginated = useMemo(() => {
-    const safePage = Math.max(1, Math.min(page, totalPages));
-    const start = (safePage - 1) * pageSize;
-    return filtered.slice(start, start + pageSize);
-  }, [filtered, page, pageSize, totalPages]);
+  const totalPages = casesPage?.total_pages || 1;
+  const filtered = allCases;
+  const paginated = allCases;
 
   // Sync `page` state whenever the URL's ?page= changes — this is what
   // makes browser back/forward and direct links like /cases?page=3
@@ -180,7 +157,7 @@ export default function CasesList() {
   }, [search, dateFrom, dateTo, statusFilter]);
 
   useEffect(() => {
-    if (cases === null || cases === undefined) return; // data still loading — don't clamp yet
+    if (casesPage === null || casesPage === undefined) return; // data still loading — don't clamp yet
     if (totalPages > 0 && page > totalPages) {
       setPage(totalPages);
       try {
@@ -189,7 +166,7 @@ export default function CasesList() {
         // ignore
       }
     }
-  }, [cases, page, totalPages]);
+  }, [casesPage, page, totalPages]);
 
   const handlePageChange = (newPage) => {
     if (newPage < 1 || newPage > totalPages || newPage === page) return;

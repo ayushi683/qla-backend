@@ -80,6 +80,15 @@ class CaseOut(BaseModel):
     revision_count: int = 1
 
 
+class CasePageOut(BaseModel):
+    model_config = _CONFIG
+    items: list[CaseOut]
+    total: int
+    page: int
+    page_size: int
+    total_pages: int
+
+
 class QuotationLineOut(BaseModel):
     model_config = _CONFIG
     line_item_id: int
@@ -251,6 +260,7 @@ class QtnGroupOut(BaseModel):
 
 
 class QuotationLineCreateRequest(BaseModel):
+    model_config = _CONFIG
     model_code: Optional[str] = None
     description: Optional[str] = None
     qty: Optional[str] = None
@@ -260,6 +270,7 @@ class QuotationLineCreateRequest(BaseModel):
 
 
 class QuotationLineUpdateRequest(BaseModel):
+    model_config = _CONFIG
     model_code: Optional[str] = None
     description: Optional[str] = None
     qty: Optional[str] = None

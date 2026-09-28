@@ -11,7 +11,7 @@ from app.models.match import ProductRecommendation
 src = pyodbc.connect("DRIVER={ODBC Driver 18 for SQL Server};SERVER=10.0.1.211;DATABASE=PTPLDATA;UID=sa;PWD=Ganesh&1984;TrustServerCertificate=yes;Encrypt=no;")
 cursor = src.cursor()
 
-cursor.execute("SELECT QTNID, FYEAR, QTNNO, QTNDT, REVNO, CU_CODE, CU_NAME, CU_EMAIL, Category, ENQNO, ENQDT, TOTMDL, TOTQTY, PROJECT, ENGCODE FROM QTNHEAD WHERE QTNDT IS NULL ORDER BY FYEAR, QTNNO, REVNO")
+cursor.execute("SELECT QTNID, FYEAR, QTNNO, QTNDT, REVNO, CU_CODE, CU_NAME, CU_EMAIL, Category, ENQNO, ENQDT, TOTMDL, TOTQTY, PROJECT, ENGCODE FROM QTNHEAD ORDER BY FYEAR, QTNNO, REVNO")
 rows = cursor.fetchall()
 
 init_db()
@@ -33,7 +33,11 @@ for r in rows:
     customer_name = cu_name or ("Customer " + str(cu_code))
     customer = db.query(Party).filter_by(display_name=customer_name).first()
     if not customer:
-        customer = Party(party_type="CUSTOMER", display_name=customer_name, email=cu_email or None)
+        email_to_use = None
+        if cu_email:
+            first_email = cu_email.split(",")[0].strip()
+            email_to_use = first_email[:255] if first_email else None
+        customer = Party(party_type="CUSTOMER", display_name=customer_name, email= email_to_use)
         db.add(customer)
         db.flush()
 
