@@ -12,9 +12,12 @@ export function usePolling(fetchFn, intervalMs = 12000) {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
   const fetchFnRef = useRef(fetchFn);
+  const requestInFlightRef = useRef(false);
   fetchFnRef.current = fetchFn;
 
   const refresh = useCallback(async () => {
+    if (requestInFlightRef.current) return;
+    requestInFlightRef.current = true;
     try {
       const result = await fetchFnRef.current();
       setData(result);
@@ -22,6 +25,7 @@ export function usePolling(fetchFn, intervalMs = 12000) {
     } catch (e) {
       setError(e.message || "Failed to load");
     } finally {
+      requestInFlightRef.current = false;
       setLoading(false);
     }
   }, []);

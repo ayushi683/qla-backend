@@ -5,7 +5,7 @@ from datetime import datetime as _dt, timezone
 from decimal import Decimal
 from fastapi import APIRouter, Depends, HTTPException
 from fastapi.responses import FileResponse
-from sqlalchemy.orm import Session, joinedload
+from sqlalchemy.orm import Session, joinedload, selectinload
 from sqlalchemy import func
 
 from app.database import get_db
@@ -32,7 +32,7 @@ from app.quotation_builder import (
     quotation_docx_filename,
 )
 from app.schemas import (
-    CaseOut, CaseDetailOut, LineItemOut, QuotationOut, QuotationDetailOut,
+    CaseOut, CasePageOut, CaseDetailOut, LineItemOut, QuotationOut, QuotationDetailOut,
     QuotationLineOut, OutboundMessageOut, EditRecommendationRequest, CaseSummaryOut,
     EnquiryEmailOut, StatusHistoryEntry, EmailUpdateRequest, RevisionSummary, QtnGroupOut,
     QuotationLineUpdateRequest, QuotationLineCreateRequest, DocumentOut, PricingUpdateRequest,
@@ -204,22 +204,48 @@ def review_queue(db: Session = Depends(get_db), current_user=Depends(get_current
     return [_line_item_to_out(i) for i in unique]
 
 
-@router.get("/cases", response_model=list[CaseOut])
+@router.get("/cases", response_model=CasePageOut)
 def list_cases(
     db: Session = Depends(get_db),
     current_user=Depends(get_current_user),
+    page: int = 1,
+    page_size: int = 15,
+    search: str | None = None,
+    status: str | None = None,
     date_from: str | None = None,
     date_to: str | None = None,
 ):
+    page = max(1, page)
+    page_size = min(100, max(1, page_size))
     query = db.query(InquiryCase)
     if current_user.role != "ADMIN" and current_user.category:
         my_categories = [c.strip() for c in current_user.category.split(",")]
         query = query.filter(InquiryCase.category.in_(my_categories))
+    if search and search.strip():
+        term = f"%{search.strip()}%"
+        query = query.filter(
+            InquiryCase.internal_ref.ilike(term)
+            | InquiryCase.project_name.ilike(term)
+            | InquiryCase.enq_no_customer.ilike(term)
+        )
+    if status and status.lower() != "all":
+        query = query.filter(InquiryCase.status == status.upper())
     if date_from:
         query = query.filter(InquiryCase.enq_received_at >= _dt.fromisoformat(date_from))
     if date_to:
         query = query.filter(InquiryCase.enq_received_at <= _dt.fromisoformat(date_to + "T23:59:59"))
-    cases = query.order_by(InquiryCase.created_at.desc()).all()
+    total = query.count()
+    cases = (
+        query
+        .options(
+            joinedload(InquiryCase.customer),
+            selectinload(InquiryCase.status_history),
+        )
+        .order_by(InquiryCase.created_at.desc())
+        .offset((page - 1) * page_size)
+        .limit(page_size)
+        .all()
+    )
 
     # Collapse quotation revisions (same qtnno + fyear) into a single
     # row — only the latest revision is shown, with a revision_count
@@ -245,7 +271,13 @@ def list_cases(
     STATUS_PRIORITY = {"IN_REVIEW": 0, "RECEIVED": 1, "QUOTED": 2}
     grouped.sort(key=lambda pair: STATUS_PRIORITY.get(pair[0].status, 1))
 
-    return [_case_to_out(c, revision_count=rc) for c, rc in grouped]
+    return CasePageOut(
+        items=[_case_to_out(c, revision_count=rc) for c, rc in grouped],
+        total=total,
+        page=page,
+        page_size=page_size,
+        total_pages=max(1, (total + page_size - 1) // page_size),
+    )
 
 
 @router.get("/cases/{case_id}", response_model=CaseDetailOut)
@@ -652,6 +684,17 @@ def review_queue_cases(db: Session = Depends(get_db), current_user=Depends(get_c
             standalone.append(case)
 
     representative_cases = []
+    grouped_revision_counts = {
+        (qtnno, fyear): count
+        for qtnno, fyear, count in db.query(
+            InquiryCase.qtnno,
+            InquiryCase.fyear,
+            func.count(InquiryCase.case_id),
+        )
+        .filter(InquiryCase.qtnno.isnot(None), InquiryCase.fyear.isnot(None))
+        .group_by(InquiryCase.qtnno, InquiryCase.fyear)
+        .all()
+    }
     revision_counts = {}
     for key, members in groups.items():
         members.sort(key=lambda m: m.revision_no or 0)
@@ -659,36 +702,94 @@ def review_queue_cases(db: Session = Depends(get_db), current_user=Depends(get_c
         representative_cases.append(rep)
         # Total revision count for this qtnno+fyear (including ones
         # that don't need review), so the badge reflects the real family size.
-        total_siblings = db.query(InquiryCase).filter_by(qtnno=key[0], fyear=key[1]).count()
-        revision_counts[rep.case_id] = total_siblings
+        revision_counts[rep.case_id] = grouped_revision_counts.get(key, 1)
     for case in standalone:
         representative_cases.append(case)
         revision_counts[case.case_id] = 1
 
+    representative_ids = [case.case_id for case in representative_cases]
+    if representative_ids:
+        loaded_cases = []
+        for start in range(0, len(representative_ids), 1000):
+            batch_ids = representative_ids[start : start + 1000]
+            loaded_cases.extend(
+                db.query(InquiryCase)
+                .filter(InquiryCase.case_id.in_(batch_ids))
+                .options(
+                    joinedload(InquiryCase.customer),
+                )
+                .all()
+            )
+        cases_by_id = {case.case_id: case for case in loaded_cases}
+        representative_cases = [cases_by_id[case_id] for case_id in representative_ids]
+
+    summaries = {
+        case_id: {
+            "items_count": 0,
+            "confidences": [],
+            "has_pending": False,
+            "has_rejected": False,
+        }
+        for case_id in representative_ids
+    }
+    for start in range(0, len(representative_ids), 1000):
+        batch_ids = representative_ids[start : start + 1000]
+        item_counts = (
+            db.query(ExtractedLineItem.case_id, func.count(ExtractedLineItem.line_item_id))
+            .filter(ExtractedLineItem.case_id.in_(batch_ids))
+            .group_by(ExtractedLineItem.case_id)
+            .all()
+        )
+        for case_id, count in item_counts:
+            summaries[case_id]["items_count"] = count
+
+        recommendation_rows = (
+            db.query(
+                ExtractedLineItem.case_id,
+                ExtractedLineItem.line_item_id,
+                ProductRecommendation.rank_no,
+                ProductRecommendation.confidence,
+                ProductRecommendation.is_selected_by_engineer,
+            )
+            .join(
+                ProductRecommendation,
+                ProductRecommendation.line_item_id == ExtractedLineItem.line_item_id,
+            )
+            .filter(ExtractedLineItem.case_id.in_(batch_ids))
+            .order_by(ExtractedLineItem.line_item_id, ProductRecommendation.rank_no)
+            .all()
+        )
+        recommendations_by_item = {}
+        for row in recommendation_rows:
+            recommendations_by_item.setdefault(
+                (row.case_id, row.line_item_id), []
+            ).append(row)
+
+        for (case_id, _line_item_id), recommendations in recommendations_by_item.items():
+            approved = next(
+                (rec for rec in recommendations if rec.is_selected_by_engineer is True),
+                None,
+            )
+            top = approved or recommendations[0]
+            if top.confidence is not None:
+                summaries[case_id]["confidences"].append(top.confidence)
+            if top.is_selected_by_engineer is False:
+                summaries[case_id]["has_rejected"] = True
+            elif top.is_selected_by_engineer is None:
+                summaries[case_id]["has_pending"] = True
+
     results = []
     for case in representative_cases:
-        items = db.query(ExtractedLineItem).filter_by(case_id=case.case_id).all()
-        confidences = []
-        has_pending = False
-        has_rejected = False
-        for item in items:
-            top = _top_recommendation(item)
-            if top:
-                if top.confidence is not None:
-                    confidences.append(top.confidence)
-                if top.is_selected_by_engineer is False:
-                    has_rejected = True
-                elif top.is_selected_by_engineer is None:
-                    has_pending = True
+        summary = summaries[case.case_id]
         results.append(CaseSummaryOut(
             case_id=case.case_id,
             internal_ref=case.internal_ref,
             customer_name=case.customer.display_name if case.customer else None,
             project_name=case.project_name,
-            items_count=len(items),
-            top_confidence=max(confidences) if confidences else None,
-            has_pending=has_pending,
-            has_rejected=has_rejected,
+            items_count=summary["items_count"],
+            top_confidence=max(summary["confidences"]) if summary["confidences"] else None,
+            has_pending=summary["has_pending"],
+            has_rejected=summary["has_rejected"],
             category=case.category,
             status=case.status,
             enq_received_at=case.enq_received_at,

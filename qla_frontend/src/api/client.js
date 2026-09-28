@@ -55,7 +55,12 @@ export const api = {
   caseCommunication: (caseId) => request(`/api/cases/${caseId}/communication`),
   reviewQueue: () => request("/api/review-queue"),
   reviewQueueCases: () => request("/api/review-queue-cases"),
-  cases: () => request("/api/cases"),
+  cases: (params = {}) => {
+    const query = new URLSearchParams(
+      Object.entries(params).filter(([, value]) => value !== undefined && value !== "")
+    ).toString();
+    return request(`/api/cases${query ? `?${query}` : ""}`);
+  },
   caseDetail: (id) => request(`/api/cases/${id}`),
 
   listUsers: () => request("/api/users"),

@@ -15,7 +15,7 @@ DATABASE_URL = os.environ.get(
 )
 
 if DATABASE_URL.startswith("sqlite"):
-    connect_args = {"check_same_thread": False}
+    connect_args = {"check_same_thread": False, "timeout": 30}
     engine = create_engine(DATABASE_URL, connect_args=connect_args)
 else:
     # pyodbc login timeout (seconds) — a hung SQL handshake used to freeze /api/auth/login
@@ -24,6 +24,8 @@ else:
         DATABASE_URL,
         connect_args=connect_args,
         pool_pre_ping=True,
+        pool_size=20,
+        max_overflow=40,
         pool_timeout=10,
         pool_recycle=1800,
     )
