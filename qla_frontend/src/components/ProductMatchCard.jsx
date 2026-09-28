@@ -1,6 +1,6 @@
-import { useState } from "react";
+import { useState, useMemo, useRef, useEffect } from "react";
 import { api } from "../api/client";
-import { otherRecommendations, topRecommendation } from "../utils/recommendations";
+import { otherRecommendations, topRecommendation, uniqueRecommendations } from "../utils/recommendations";
 
 const FEEDBACK_REASONS = [
   { value: "WRONG_FAMILY", label: "Wrong product family" },
@@ -38,11 +38,85 @@ function confidencePercent(conf) {
   return Math.round(parseFloat(conf) * 100);
 }
 
-function RejectSuggestionModal({ item, topRec, onClose, onConfirm, busy, error }) {
+function RejectSuggestionModal({ item, topRec, allCaseItems, onClose, onConfirm, busy, error }) {
   const [selectedReasons, setSelectedReasons] = useState(new Set());
-  const [comment, setComment] = useState("");
   const [suggestedModel, setSuggestedModel] = useState("");
   const [localError, setLocalError] = useState("");
+
+  // Gather suggested products across this case (shows 3 if 3 are suggested, 1 if 1 is suggested)
+  const availableProducts = useMemo(() => {
+    const items = (allCaseItems && allCaseItems.length > 0) ? allCaseItems : (item ? [item] : []);
+    const list = [];
+    const seenIds = new Set();
+
+    items.forEach((it, idx) => {
+      const top = topRecommendation(it);
+      const recs = uniqueRecommendations(it?.recommendations || []);
+
+      if (recs.length > 0) {
+        recs.forEach((r) => {
+          const id = String(r.recommendation_id);
+          if (!seenIds.has(id)) {
+            seenIds.add(id);
+            list.push({
+              id,
+              lineItemId: it.line_item_id,
+              code: r.model_code || r.family_code || `Product ${idx + 1}`,
+              family: r.family_code || it.product_type || it.description || "Instrument",
+              lineLabel: it.product_type || it.description || `Line ${it.line_no || idx + 1}`,
+              isPrimary: top && r.recommendation_id === top.recommendation_id,
+              isCurrent: item && it.line_item_id === item.line_item_id,
+            });
+          }
+        });
+      } else if (top) {
+        const id = String(top.recommendation_id);
+        if (!seenIds.has(id)) {
+          seenIds.add(id);
+          list.push({
+            id,
+            lineItemId: it.line_item_id,
+            code: top.model_code || top.family_code || `Product ${idx + 1}`,
+            family: top.family_code || it.product_type || it.description || "Instrument",
+            lineLabel: it.product_type || it.description || `Line ${it.line_no || idx + 1}`,
+            isPrimary: true,
+            isCurrent: item && it.line_item_id === item.line_item_id,
+          });
+        }
+      }
+    });
+
+    return list;
+  }, [allCaseItems, item]);
+
+  // Selected products state with checkboxes (starts unselected so user can suggest correct item)
+  const [selectedProducts, setSelectedProducts] = useState(new Set());
+  const [dropdownOpen, setDropdownOpen] = useState(false);
+  const [productFeedback, setProductFeedback] = useState("");
+  const dropdownRef = useRef(null);
+
+  // Close dropdown on outside click
+  useEffect(() => {
+    function handleClickOutside(event) {
+      if (dropdownRef.current && !dropdownRef.current.contains(event.target)) {
+        setDropdownOpen(false);
+      }
+    }
+    document.addEventListener("mousedown", handleClickOutside);
+    return () => document.removeEventListener("mousedown", handleClickOutside);
+  }, []);
+
+  function toggleProduct(id) {
+    setSelectedProducts((prev) => {
+      const next = new Set(prev);
+      if (next.has(id)) {
+        next.delete(id);
+      } else {
+        next.add(id);
+      }
+      return next;
+    });
+  }
 
   function toggleReason(value) {
     setSelectedReasons((prev) => {
@@ -54,19 +128,25 @@ function RejectSuggestionModal({ item, topRec, onClose, onConfirm, busy, error }
   }
 
   function handleConfirm() {
-    if (selectedReasons.size === 0) {
-      setLocalError("Select at least one reason.");
-      return;
-    }
-    if (!comment.trim()) {
-      setLocalError("Comments are required.");
+    if (!productFeedback.trim()) {
+      setLocalError("Please enter feedback for the selected product(s).");
       return;
     }
     setLocalError("");
+
+    // Fallback reason code if no chips were clicked
+    const reasons = selectedReasons.size > 0 ? Array.from(selectedReasons).join(",") : "SPEC_MISMATCH";
+
+    const selectedCodes = Array.from(selectedProducts)
+      .map((id) => availableProducts.find((p) => p.id === id)?.code)
+      .filter(Boolean)
+      .join(", ");
+
+    // Backend wiring untouched: passes standard fields expected by api.submitFeedback
     onConfirm({
-      reasonCode: Array.from(selectedReasons).join(","),
-      comment: comment.trim(),
-      suggestedModel: suggestedModel.trim() || null,
+      reasonCode: reasons,
+      comment: productFeedback.trim(),
+      suggestedModel: suggestedModel.trim() || selectedCodes || null,
     });
   }
 
@@ -79,7 +159,7 @@ function RejectSuggestionModal({ item, topRec, onClose, onConfirm, busy, error }
         </div>
 
         <div className="qgm-body">
-          <div className="edit-drawer-product-card" style={{ marginBottom: 18 }}>
+          <div className="edit-drawer-product-card" style={{ marginBottom: 14 }}>
             <span className="edit-drawer-product-icon">📦</span>
             <div>
               <div className="edit-drawer-product-title">
@@ -94,7 +174,116 @@ function RejectSuggestionModal({ item, topRec, onClose, onConfirm, busy, error }
             </div>
           </div>
 
-          <p className="qgm-section-label">Select one or more reasons</p>
+          {/* 1. Multi-Select Suggested Products Dropdown with Checkboxes */}
+          <div className="reject-multiselect-container" ref={dropdownRef}>
+            <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 6 }}>
+              <label className="edit-drawer-label" style={{ margin: 0 }}>
+                Suggest Correct Item / Alternate <span style={{ fontWeight: 400, color: "var(--muted)" }}>(Optional)</span>
+              </label>
+              {selectedProducts.size > 0 && (
+                <span style={{ fontSize: "0.75rem", color: "var(--brand-dark)", fontWeight: 600 }}>
+                  {selectedProducts.size} of {availableProducts.length} selected
+                </span>
+              )}
+            </div>
+
+            <div
+              className={`reject-multiselect-trigger ${dropdownOpen ? "open" : ""}`}
+              onClick={() => setDropdownOpen((v) => !v)}
+              title="Click to select suggested / correct items"
+            >
+              <div className="reject-multiselect-summary">
+                {selectedProducts.size === 0 ? (
+                  <span className="placeholder">Select correct / suggested item…</span>
+                ) : (
+                  <div className="reject-selected-tags">
+                    {availableProducts
+                      .filter((p) => selectedProducts.has(p.id))
+                      .map((p) => (
+                        <span key={p.id} className="reject-tag-pill">
+                          {p.code}
+                        </span>
+                      ))}
+                  </div>
+                )}
+              </div>
+              <span className="reject-dropdown-arrow">{dropdownOpen ? "▲" : "▼"}</span>
+            </div>
+
+            {dropdownOpen && (
+              <div className="reject-multiselect-menu">
+                <div className="reject-multiselect-menu-header">
+                  <span>Suggested options ({availableProducts.length})</span>
+                  <button
+                    type="button"
+                    className="reject-select-all-btn"
+                    onClick={(e) => {
+                      e.stopPropagation();
+                      if (selectedProducts.size === availableProducts.length) {
+                        setSelectedProducts(new Set([availableProducts[0]?.id]));
+                      } else {
+                        setSelectedProducts(new Set(availableProducts.map((p) => p.id)));
+                      }
+                    }}
+                  >
+                    {selectedProducts.size === availableProducts.length ? "Reset Selection" : "Select All"}
+                  </button>
+                </div>
+                <div className="reject-multiselect-items">
+                  {availableProducts.map((p) => {
+                    const isChecked = selectedProducts.has(p.id);
+                    return (
+                      <label
+                        key={p.id}
+                        className={`reject-multiselect-item ${isChecked ? "checked" : ""}`}
+                        onClick={(e) => e.stopPropagation()}
+                      >
+                        <input
+                          type="checkbox"
+                          checked={isChecked}
+                          onChange={() => toggleProduct(p.id)}
+                        />
+                        <div className="reject-item-details">
+                          <div className="reject-item-code">
+                            <span>{p.code}</span>
+                            {p.isPrimary && <span className="reject-primary-pill">Primary</span>}
+                          </div>
+                          <div className="reject-item-family">{p.family}</div>
+                        </div>
+                      </label>
+                    );
+                  })}
+                </div>
+              </div>
+            )}
+          </div>
+
+          {/* 2. Single Input for Feedback */}
+          <div style={{ marginBottom: 14 }}>
+            <label className="edit-drawer-label">
+              Feedback <span className="edit-drawer-required">(required)</span>
+            </label>
+            <input
+              type="text"
+              className="edit-drawer-input"
+              value={productFeedback}
+              onChange={(e) => setProductFeedback(e.target.value)}
+              placeholder="Write feedback for selected product(s)..."
+              style={{
+                width: "100%",
+                padding: "9px 12px",
+                borderRadius: "8px",
+                border: "1px solid var(--border)",
+                fontSize: "0.85rem",
+                color: "var(--ink)",
+                background: "var(--card)",
+                boxSizing: "border-box",
+              }}
+            />
+          </div>
+
+          {/* 3. Reason Chips (Optional quick tags) */}
+          <p className="qgm-section-label" style={{ marginTop: 4 }}>Reason Category (optional)</p>
           <div className="reject-reason-chips">
             {REJECT_REASONS.map((r) => (
               <button
@@ -109,22 +298,8 @@ function RejectSuggestionModal({ item, topRec, onClose, onConfirm, busy, error }
             ))}
           </div>
 
-          <label className="edit-drawer-label">
-            Comments <span className="edit-drawer-required">(required)</span>
-          </label>
-          <textarea
-            rows={3}
-            className="edit-drawer-textarea"
-            value={comment}
-            onChange={(e) => setComment(e.target.value)}
-            maxLength={500}
-            placeholder="Explain why this suggestion doesn't fit…"
-          />
-          <div style={{ textAlign: "right", fontSize: "0.72rem", color: "var(--muted)" }}>
-            {comment.length}/500
-          </div>
-
-          <label className="edit-drawer-label">Suggest correct model (optional)</label>
+          {/* 4. Suggest Correct Model (Optional) */}
+          <label className="edit-drawer-label" style={{ marginTop: 10 }}>Suggest correct model (optional)</label>
           <div className="edit-drawer-search-input">
             <input
               value={suggestedModel}
@@ -442,7 +617,17 @@ function InlineAlternates({ item, topRec, otherRecs, onChanged }) {
   );
 }
 
-export default function ProductMatchCard({ item, onChanged, onRejected, onQuotationReady, selectable, isSelected, onToggleSelect, variant = "compact" }) {
+export default function ProductMatchCard({
+  item,
+  allCaseItems,
+  onChanged,
+  onRejected,
+  onQuotationReady,
+  selectable,
+  isSelected,
+  onToggleSelect,
+  variant = "compact",
+}) {
   const [error, setError] = useState("");
   const [busyGlobal, setBusyGlobal] = useState(false);
   const [showDrawer, setShowDrawer] = useState(false);
@@ -590,6 +775,7 @@ export default function ProductMatchCard({ item, onChanged, onRejected, onQuotat
         <RejectSuggestionModal
           item={item}
           topRec={topRec}
+          allCaseItems={allCaseItems}
           onClose={() => setShowRejectModal(false)}
           onConfirm={handleConfirmReject}
           busy={busyGlobal}
