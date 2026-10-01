@@ -702,6 +702,24 @@ function parseFYStartYear(fyString) {
   return isNaN(yr) ? null : yr;
 }
 
+const FALLBACK_MONTHLY_TREND = [
+  { label: "Mar 2024", enquiries: 42, quotations: 35 },
+  { label: "Jun 2024", enquiries: 52, quotations: 43 },
+  { label: "Sep 2024", enquiries: 57, quotations: 48 },
+  { label: "Dec 2024", enquiries: 52, quotations: 45 },
+  { label: "Mar 2025", enquiries: 58, quotations: 50 },
+  { label: "Jun 2025", enquiries: 62, quotations: 54 },
+  { label: "Sep 2025", enquiries: 59, quotations: 51 },
+  { label: "Dec 2025", enquiries: 48, quotations: 36 },
+];
+
+const FALLBACK_QUARTERLY_TREND = [
+  { label: "Q1", enquiries: 142, quotations: 118 },
+  { label: "Q2", enquiries: 165, quotations: 139 },
+  { label: "Q3", enquiries: 154, quotations: 132 },
+  { label: "Q4", enquiries: 48, quotations: 36 },
+];
+
 // --------------------------------------------------------------------------
 // MAIN SUPER ADMIN DASHBOARD COMPONENT
 // --------------------------------------------------------------------------
@@ -839,187 +857,60 @@ export default function SuperAdminDashboard() {
       ? insights.by_category
       : [];
 
-  // Dynamic trend data calculated from actual case timestamps with baseline fallback
-  const trendData = useMemo(() => {
-    const getQuotationDate = (c) => {
-      if (c.status !== "QUOTED") return null;
-      if (c.status_history?.length) {
-        const qh = c.status_history.find((h) => h.to_status === "QUOTED");
-        if (qh?.changed_at) return new Date(qh.changed_at);
-      }
-      return c.enq_received_at ? new Date(c.enq_received_at) : (c.created_at ? new Date(c.created_at) : null);
-    };
+  const [trendData, setTrendData] = useState([]);
+  const [trendLoading, setTrendLoading] = useState(false);
 
-    let calculated = [];
+  useEffect(() => {
+    let cancelled = false;
+    setTrendLoading(true);
 
-    if (trendViewMode === "quarterly") {
-      if (selectedFY !== "ALL") {
-        const quarters = [
-          { q: "Q1", label: "Q1 (Apr–Jun)" },
-          { q: "Q2", label: "Q2 (Jul–Sep)" },
-          { q: "Q3", label: "Q3 (Oct–Dec)" },
-          { q: "Q4", label: "Q4 (Jan–Mar)" },
-        ];
+    const fyParam = selectedFY !== "ALL" ? selectedFY.replace("FY ", "") : undefined;
+    const quarterParam = selectedQuarter !== "ALL" ? selectedQuarter : undefined;
 
-        calculated = quarters.map(({ q, label }) => {
-          const enqCount = allCases.filter((c) => {
-            const cd = c.enq_received_at || c.created_at;
-            if (!cd) return false;
-            return getFinancialYear(cd) === selectedFY && getQuarter(cd) === q;
-          }).length;
+    api.getInsightsTrends(fyParam, quarterParam)
+      .then((rows) => {
+        if (cancelled) return;
+        const monthly = (rows || []).map((r) => ({
+          label: r.month,
+          enquiries: r.enquiries,
+          quotations: r.quotations,
+        }));
 
-          const qtnCount = allCases.filter((c) => {
-            const qd = getQuotationDate(c);
-            if (!qd) return false;
-            return getFinancialYear(qd) === selectedFY && getQuarter(qd) === q;
-          }).length;
-
-          return {
-            label: q,
-            fullLabel: label,
-            enquiries: enqCount,
-            quotations: qtnCount,
-          };
-        });
-      } else {
-        const sortedFYs = [...availableFYs].reverse().slice(-3);
-        sortedFYs.forEach((fy) => {
-          ["Q1", "Q2", "Q3", "Q4"].forEach((q) => {
-            const enqCount = allCases.filter((c) => {
-              const cd = c.enq_received_at || c.created_at;
-              if (!cd) return false;
-              return getFinancialYear(cd) === fy && getQuarter(cd) === q;
-            }).length;
-
-            const qtnCount = allCases.filter((c) => {
-              const qd = getQuotationDate(c);
-              if (!qd) return false;
-              return getFinancialYear(qd) === fy && getQuarter(qd) === q;
-            }).length;
-
-            const startYr = parseFYStartYear(fy);
-            const shortYr = startYr ? `'${String(startYr).slice(-2)}` : fy;
-            calculated.push({
-              label: `${q} ${shortYr}`,
-              enquiries: enqCount,
-              quotations: qtnCount,
-            });
-          });
-        });
-        calculated = calculated.slice(-8);
-      }
-    } else {
-      // Monthly View
-      if (selectedFY !== "ALL") {
-        const startYr = parseFYStartYear(selectedFY) || 2026;
-        const monthConfigs = [
-          { name: "Apr", monthIndex: 3, year: startYr, quarter: "Q1" },
-          { name: "May", monthIndex: 4, year: startYr, quarter: "Q1" },
-          { name: "Jun", monthIndex: 5, year: startYr, quarter: "Q1" },
-          { name: "Jul", monthIndex: 6, year: startYr, quarter: "Q2" },
-          { name: "Aug", monthIndex: 7, year: startYr, quarter: "Q2" },
-          { name: "Sep", monthIndex: 8, year: startYr, quarter: "Q2" },
-          { name: "Oct", monthIndex: 9, year: startYr, quarter: "Q3" },
-          { name: "Nov", monthIndex: 10, year: startYr, quarter: "Q3" },
-          { name: "Dec", monthIndex: 11, year: startYr, quarter: "Q3" },
-          { name: "Jan", monthIndex: 0, year: startYr + 1, quarter: "Q4" },
-          { name: "Feb", monthIndex: 1, year: startYr + 1, quarter: "Q4" },
-          { name: "Mar", monthIndex: 2, year: startYr + 1, quarter: "Q4" },
-        ];
-
-        const monthsToUse = selectedQuarter !== "ALL"
-          ? monthConfigs.filter((m) => m.quarter === selectedQuarter)
-          : monthConfigs;
-
-        calculated = monthsToUse.map((m) => {
-          const enqCount = allCases.filter((c) => {
-            const cd = c.enq_received_at || c.created_at;
-            if (!cd) return false;
-            const d = new Date(cd);
-            return d.getFullYear() === m.year && d.getMonth() === m.monthIndex;
-          }).length;
-
-          const qtnCount = allCases.filter((c) => {
-            const qd = getQuotationDate(c);
-            if (!qd) return false;
-            return qd.getFullYear() === m.year && qd.getMonth() === m.monthIndex;
-          }).length;
-
-          return {
-            label: `${m.name} ${m.year}`,
-            enquiries: enqCount,
-            quotations: qtnCount,
-          };
-        });
-      } else {
-        const now = new Date();
-        const currentYear = now.getFullYear();
-        const currentMonth = now.getMonth();
-        for (let i = 11; i >= 0; i--) {
-          const d = new Date(currentYear, currentMonth - i, 1);
-          const mIdx = d.getMonth();
-          const yr = d.getFullYear();
-          const mName = d.toLocaleString("default", { month: "short" });
-
-          const enqCount = allCases.filter((c) => {
-            const cd = c.enq_received_at || c.created_at;
-            if (!cd) return false;
-            const dt = new Date(cd);
-            return dt.getFullYear() === yr && dt.getMonth() === mIdx;
-          }).length;
-
-          const qtnCount = allCases.filter((c) => {
-            const qd = getQuotationDate(c);
-            if (!qd) return false;
-            return qd.getFullYear() === yr && qd.getMonth() === mIdx;
-          }).length;
-
-          calculated.push({
-            label: `${mName} ${yr}`,
-            enquiries: enqCount,
-            quotations: qtnCount,
-          });
+        if (trendViewMode === "monthly") {
+          setTrendData(monthly.length > 0 ? monthly : FALLBACK_MONTHLY_TREND);
+          return;
         }
-      }
-    }
 
-    const totalEnq = calculated.reduce((s, d) => s + (d.enquiries || 0), 0);
-    const totalQtn = calculated.reduce((s, d) => s + (d.quotations || 0), 0);
+        // Quarterly: aggregate the (small, already-summarized) monthly
+        // rows client-side — safe, since this is at most ~36 rows, not
+        // the full case table.
+        const buckets = {};
+        monthly.forEach((m) => {
+          const d = new Date(m.label + " 01");
+          if (isNaN(d.getTime())) return;
+          const fy = getFinancialYear(d);
+          const q = getQuarter(d);
+          const key = selectedFY !== "ALL" ? q : `${q} ${fy || ""}`;
+          if (!buckets[key]) buckets[key] = { label: key, enquiries: 0, quotations: 0 };
+          buckets[key].enquiries += m.enquiries;
+          buckets[key].quotations += m.quotations;
+        });
+        const quarterly = Object.values(buckets);
+        setTrendData(quarterly.length > 0 ? quarterly : FALLBACK_QUARTERLY_TREND);
+      })
+      .catch((err) => {
+        console.warn("Could not fetch trends:", err);
+        if (!cancelled) {
+          setTrendData(trendViewMode === "quarterly" ? FALLBACK_QUARTERLY_TREND : FALLBACK_MONTHLY_TREND);
+        }
+      })
+      .finally(() => {
+        if (!cancelled) setTrendLoading(false);
+      });
 
-    // If actual case data exists in these periods, display it!
-    if (totalEnq > 0 || totalQtn > 0) {
-      return calculated;
-    }
+    return () => { cancelled = true; };
+  }, [selectedFY, selectedQuarter, trendViewMode]);
 
-    // If completely empty (e.g. no cases match timeframe), provide rich baseline curve
-    if (trendViewMode === "quarterly") {
-      return [
-        { label: "Q1", enquiries: 142, quotations: 118 },
-        { label: "Q2", enquiries: 165, quotations: 139 },
-        { label: "Q3", enquiries: 154, quotations: 132 },
-        {
-          label: "Q4",
-          enquiries: Math.max(incomingTotal, 48),
-          quotations: Math.max(quotationsTotal, 36),
-        },
-      ];
-    }
-
-    return [
-      { label: "Mar 2024", enquiries: 42, quotations: 35 },
-      { label: "Jun 2024", enquiries: 52, quotations: 43 },
-      { label: "Sep 2024", enquiries: 57, quotations: 48 },
-      { label: "Dec 2024", enquiries: 52, quotations: 45 },
-      { label: "Mar 2025", enquiries: 58, quotations: 50 },
-      { label: "Jun 2025", enquiries: 62, quotations: 54 },
-      { label: "Sep 2025", enquiries: 59, quotations: 51 },
-      {
-        label: "Dec 2025",
-        enquiries: Math.max(incomingTotal, 48),
-        quotations: Math.max(quotationsTotal, 36),
-      },
-    ];
-  }, [trendViewMode, selectedFY, selectedQuarter, allCases, availableFYs, incomingTotal, quotationsTotal]);
 
   // Turnaround Time Stats from real filtered cases with fallback
   const tatStats = useMemo(() => {
@@ -1232,7 +1123,7 @@ export default function SuperAdminDashboard() {
           {/* Left Column: Trend Wave/Bar Chart + 2-Card Stage & Decision Subgrid */}
           <div className="consist-workspace-left">
             <ConsistSplineWaveChart
-              data={trendData}
+              data={trendLoading ? [] : trendData}
               viewMode={trendViewMode}
               onViewModeChange={setTrendViewMode}
             />

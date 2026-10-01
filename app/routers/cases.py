@@ -7,6 +7,8 @@ from fastapi import APIRouter, Depends, HTTPException
 from fastapi.responses import FileResponse
 from sqlalchemy.orm import Session, joinedload, selectinload
 from sqlalchemy import func
+from sqlalchemy import extract
+import calendar
 
 from app.database import get_db
 from app.deps import get_current_user
@@ -2083,3 +2085,81 @@ def reset_recommendation_decision(recommendation_id: int, db: Session = Depends(
 
     db.commit()
     return {"status": "reset"}
+
+@router.get("/insights/trends", response_model=list[dict])
+def insights_trends(
+    db: Session = Depends(get_db),
+    current_user=Depends(get_current_user),
+    fy: str | None = None,       # e.g. "2024-25" (April–March)
+    quarter: str | None = None,  # "Q1" | "Q2" | "Q3" | "Q4"
+):
+    """
+    Returns monthly enquiry/quotation counts, aggregated directly in
+    the database (GROUP BY), so only ~12-36 summary rows ever cross
+    the wire — never the full case table. Fixes the dashboard trend
+    chart timing out on the 26k+ row production dataset.
+    """
+    my_categories = [c.strip() for c in current_user.category.split(",")] if current_user.category else []
+
+    date_from = date_to = None
+    if fy:
+        try:
+            start_year = int(fy.split("-")[0])
+        except (ValueError, IndexError):
+            start_year = None
+        if start_year:
+            date_from = datetime(start_year, 4, 1)
+            date_to = datetime(start_year + 1, 3, 31, 23, 59, 59)
+
+            if quarter:
+                quarter_map = {"Q1": (4, 6), "Q2": (7, 9), "Q3": (10, 12), "Q4": (1, 3)}
+                q = quarter_map.get(quarter.upper())
+                if q:
+                    start_month, end_month = q
+                    end_year = start_year + 1 if quarter.upper() == "Q4" else start_year
+                    date_from = datetime(end_year, start_month, 1)
+                    last_day = calendar.monthrange(end_year, end_month)[1]
+                    date_to = datetime(end_year, end_month, last_day, 23, 59, 59)
+
+    enq_yr = extract("year", InquiryCase.enq_received_at)
+    enq_mo = extract("month", InquiryCase.enq_received_at)
+    enquiry_q = (
+        db.query(enq_yr.label("yr"), enq_mo.label("mo"), func.count(InquiryCase.case_id).label("cnt"))
+        .filter(InquiryCase.enq_received_at.isnot(None))
+    )
+    if current_user.role != "ADMIN" and my_categories:
+        enquiry_q = enquiry_q.filter(InquiryCase.category.in_(my_categories))
+    if date_from:
+        enquiry_q = enquiry_q.filter(InquiryCase.enq_received_at >= date_from)
+    if date_to:
+        enquiry_q = enquiry_q.filter(InquiryCase.enq_received_at <= date_to)
+    enquiry_rows = enquiry_q.group_by(enq_yr, enq_mo).all()
+
+    qtn_yr = extract("year", QuotationDraft.created_at)
+    qtn_mo = extract("month", QuotationDraft.created_at)
+    quote_q = (
+        db.query(qtn_yr.label("yr"), qtn_mo.label("mo"), func.count(QuotationDraft.draft_id).label("cnt"))
+        .join(InquiryCase, QuotationDraft.case_id == InquiryCase.case_id)
+        .filter(QuotationDraft.created_at.isnot(None))
+    )
+    if current_user.role != "ADMIN" and my_categories:
+        quote_q = quote_q.filter(InquiryCase.category.in_(my_categories))
+    if date_from:
+        quote_q = quote_q.filter(QuotationDraft.created_at >= date_from)
+    if date_to:
+        quote_q = quote_q.filter(QuotationDraft.created_at <= date_to)
+    quote_rows = quote_q.group_by(qtn_yr, qtn_mo).all()
+
+    enquiry_map = {(int(r.yr), int(r.mo)): r.cnt for r in enquiry_rows if r.yr is not None}
+    quote_map = {(int(r.yr), int(r.mo)): r.cnt for r in quote_rows if r.yr is not None}
+    all_keys = sorted(set(enquiry_map) | set(quote_map))
+
+    MONTH_NAMES = ["", "Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"]
+    return [
+        {
+            "month": f"{MONTH_NAMES[mo]} {yr}",
+            "enquiries": enquiry_map.get((yr, mo), 0),
+            "quotations": quote_map.get((yr, mo), 0),
+        }
+        for (yr, mo) in all_keys
+    ]

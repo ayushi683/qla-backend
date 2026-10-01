@@ -97,6 +97,13 @@ export const api = {
   runAiMatch: (caseId) => request(`/api/cases/${caseId}/run-ai-match`, { method: "POST" }),
   bulkAiMatch: (caseIds) => request("/api/cases/bulk-ai-match", { method: "POST", body: { case_ids: caseIds } }),
   getInsights: () => request("/api/insights"),
+  getInsightsTrends: (fy, quarter) => {
+  const params = new URLSearchParams();
+  if (fy) params.set("fy", fy);
+  if (quarter) params.set("quarter", quarter);
+  const qs = params.toString();
+  return request(`/api/insights/trends${qs ? `?${qs}` : ""}`);
+},
   savePricing: (caseId, payload) => request(`/api/cases/${caseId}/pricing`, { method: "PUT", body: payload }),
 
   caseDocuments: (caseId) => request(`/api/cases/${caseId}/documents`),
