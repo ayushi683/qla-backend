@@ -126,10 +126,30 @@ def _maybe_create_quotation_draft(db: Session, case_id: int):
     )
 
     if existing is not None:
+        current_lines = db.query(QuotationLine).filter_by(draft_id=existing.draft_id).all()
+        approved_ids = {item.line_item_id for item in approved_items}
+        for ql in current_lines:
+            if ql.line_item_id is None or ql.line_item_id in approved_ids:
+                continue
+            source = db.get(ExtractedLineItem, ql.line_item_id)
+            if source is not None and source.recommendations:
+                db.delete(ql)
+        db.flush()
         existing_line_item_ids = {
             ql.line_item_id
             for ql in db.query(QuotationLine).filter_by(draft_id=existing.draft_id).all()
         }
+        for ql in db.query(QuotationLine).filter_by(draft_id=existing.draft_id).all():
+            source = next((item for item in approved_items if item.line_item_id == ql.line_item_id), None)
+            if source is None:
+                continue
+            rec = _top_recommendation(source)
+            if rec is None:
+                continue
+            ql.model_code = rec.model_code
+            ql.description = source.description or source.equipment_name or rec.model_code
+            if source.qty is not None:
+                ql.qty = str(source.qty)
         next_line_no = (
             db.query(func.max(QuotationLine.line_no)).filter_by(draft_id=existing.draft_id).scalar() or 0
         )
@@ -423,9 +443,17 @@ def generate_quotation_document(case_id: int, db: Session = Depends(get_db)):
     if quotation is None:
         raise HTTPException(404, "No quotation draft exists for this case yet")
 
+    _maybe_create_quotation_draft(db, case_id)
+    db.expire_all()
+    quotation = (
+        db.query(QuotationDraft).filter_by(case_id=case_id)
+        .order_by(QuotationDraft.revision_no.desc()).first()
+    )
+    if quotation is None:
+        raise HTTPException(404, "No quotation draft exists for this case yet")
     lines = (
         db.query(QuotationLine).filter_by(draft_id=quotation.draft_id)
-        .order_by(QuotationLine.line_no).all()
+        .order_by(QuotationLine.line_no, QuotationLine.quote_line_id).all()
     )
     if not lines:
         raise HTTPException(400, "Quotation has no line items to generate")
@@ -453,14 +481,17 @@ def generate_quotation_document(case_id: int, db: Session = Depends(get_db)):
         ))
 
     outbound = db.query(OutboundMessage).filter_by(draft_id=quotation.draft_id).first()
+    subject, body = draft_email_text(case, lines)
     if outbound is None:
-        subject, body = draft_email_text(case, lines)
         outbound = OutboundMessage(
             case_id=case_id, draft_id=quotation.draft_id, channel="EMAIL",
             to_emails=[case.customer.email] if case.customer and case.customer.email else None,
             subject=subject, body_text=body, send_status="PENDING", created_by="system-auto",
         )
         db.add(outbound)
+    elif outbound.send_status != "SENT":
+        outbound.subject = subject
+        outbound.body_text = body
 
     db.commit()
     db.refresh(quotation)
@@ -1150,6 +1181,25 @@ def _unify_ai_products(result: dict) -> list[dict]:
                 row["model_code"] = c
                 row["suggested_models"] = [{"model_number": c, "model_code": c}]
                 expanded.append(row)
+        elif len(codes) > 1:
+            # Each distinct catalogue model is its own item so a multi-product
+            # enquiry can be quoted as A, B, C… rather than one collapsed card.
+            for c in dict.fromkeys(codes):
+                notes = ""
+                for sm in fam.get("suggested_models") or []:
+                    cand = _clean_model_code(
+                        sm.get("model_number") or sm.get("model_code"), family
+                    )
+                    if cand and cand.upper() == c.upper():
+                        notes = str(sm.get("notes") or "")
+                        break
+                row = dict(fam)
+                row["model_number"] = c
+                row["model_code"] = c
+                row["suggested_models"] = [
+                    {"model_number": c, "model_code": c, "notes": notes}
+                ]
+                expanded.append(row)
         else:
             expanded.append(fam)
 
@@ -1168,11 +1218,11 @@ def _unify_ai_products(result: dict) -> list[dict]:
             conf = float(fam.get("confidence") or 0)
         except (TypeError, ValueError):
             conf = 0.0
-        key = mn.upper() if mn and re.search(r"(?i)\s+X\s+", mn) else family.upper()
+        key = (mn or family).upper()
         prev = unified.get(key)
         better_sku = bool(mn) and (not prev or not prev["_model"])
         better_conf = prev is None or conf > float(prev["_conf"])
-        alts = [] if (mn and re.search(r"(?i)\s+X\s+", mn)) else _alts_from_family(fam, mn)
+        alts = [] if mn else _alts_from_family(fam, mn)
         if prev is None or better_sku or (better_conf and (bool(mn) == bool(prev["_model"]))):
             display = mn if (mn and re.search(r"(?i)\s+X\s+", mn)) else str(fam.get("display_name") or family)
             confirmed = ""

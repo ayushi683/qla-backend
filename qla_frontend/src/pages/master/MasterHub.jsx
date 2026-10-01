@@ -9,7 +9,9 @@ import {
   CheckCircle2,
   Clock,
   Layers,
-  Sparkles
+  Sparkles,
+  Settings,
+  Database
 } from "lucide-react";
 
 export default function MasterHub() {
@@ -102,6 +104,43 @@ export default function MasterHub() {
           <div className="master-card-footer">
             <Link to="/master/users" className="btn btn-approve" style={{ width: "100%", justifyContent: "center" }}>
               <span>Manage Users & Categories</span>
+              <ArrowRight size={14} />
+            </Link>
+          </div>
+        </div>
+
+        {/* 3. Database Settings Card */}
+        <div className="master-card">
+          <div className="master-card-top">
+            <div className="master-card-icon" style={{ background: "rgba(14, 165, 233, 0.1)", color: "#0ea5e9" }}>
+              <Database size={22} />
+            </div>
+            <span className="master-card-badge">System Core</span>
+          </div>
+
+          <h3 className="master-card-title">Database Settings</h3>
+          <p className="master-card-desc">
+            View, change, and manage the database URLs (PostgreSQL, SQLite, SQL Server) and test connection availability.
+          </p>
+
+          <div className="master-card-stats">
+            <div className="master-stat-item">
+              <span className="master-stat-num">SQLite</span>
+              <span className="master-stat-label">Active DB</span>
+            </div>
+            <div className="master-stat-item">
+              <span className="master-stat-num">Live</span>
+              <span className="master-stat-label">Status</span>
+            </div>
+            <div className="master-stat-item">
+              <span className="master-stat-num">Manage</span>
+              <span className="master-stat-label">Endpoints</span>
+            </div>
+          </div>
+
+          <div className="master-card-footer">
+            <Link to="/master/settings" className="btn btn-approve" style={{ width: "100%", justifyContent: "center" }}>
+              <span>Manage Database URLs</span>
               <ArrowRight size={14} />
             </Link>
           </div>

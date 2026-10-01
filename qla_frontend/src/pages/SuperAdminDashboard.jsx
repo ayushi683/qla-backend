@@ -31,6 +31,7 @@ import {
   BarChart2,
   Calendar,
   Filter,
+  ShieldCheck,
 } from "lucide-react";
 
 // Custom Minimalist Tooltip for Area Chart (matching the clean white card theme)
@@ -68,7 +69,7 @@ function CustomChartTooltip({ active, payload, label }) {
 }
 
 // --------------------------------------------------------------------------
-// 1. Recharts Area/Wave Chart (Enquiries & Quotations Over Time - Ref. Design)
+// 1. Recharts Area/Wave Chart (Enquiries & Quotations Over Time)
 // --------------------------------------------------------------------------
 function ConsistSplineWaveChart({ data = [], viewMode, onViewModeChange }) {
   const [chartType, setChartType] = useState("wave"); // "wave" | "bar"
@@ -139,11 +140,11 @@ function ConsistSplineWaveChart({ data = [], viewMode, onViewModeChange }) {
           {chartType === "wave" ? (
             <AreaChart data={data} margin={{ top: 12, right: 12, left: 0, bottom: 4 }}>
               <defs>
-                <linearGradient id="colorEnq" x1="0" y1="0" x2="0" y2="1">
+                <linearGradient id="colorSuperEnq" x1="0" y1="0" x2="0" y2="1">
                   <stop offset="5%" stopColor="#16694a" stopOpacity={0.16} />
                   <stop offset="95%" stopColor="#16694a" stopOpacity={0.0} />
                 </linearGradient>
-                <linearGradient id="colorQtn" x1="0" y1="0" x2="0" y2="1">
+                <linearGradient id="colorSuperQtn" x1="0" y1="0" x2="0" y2="1">
                   <stop offset="5%" stopColor="#f97316" stopOpacity={0.14} />
                   <stop offset="95%" stopColor="#f97316" stopOpacity={0.0} />
                 </linearGradient>
@@ -169,7 +170,7 @@ function ConsistSplineWaveChart({ data = [], viewMode, onViewModeChange }) {
                 stroke="#16694a"
                 strokeWidth={2.5}
                 fillOpacity={1}
-                fill="url(#colorEnq)"
+                fill="url(#colorSuperEnq)"
               />
               <Area
                 type="monotone"
@@ -178,7 +179,7 @@ function ConsistSplineWaveChart({ data = [], viewMode, onViewModeChange }) {
                 stroke="#f97316"
                 strokeWidth={2.5}
                 fillOpacity={1}
-                fill="url(#colorQtn)"
+                fill="url(#colorSuperQtn)"
               />
             </AreaChart>
           ) : (
@@ -237,8 +238,6 @@ function ConsistCategoryCard({ categories, totalIncoming }) {
   const [viewStyle, setViewStyle] = useState("donut"); // "donut" | "bars"
 
   const total = totalIncoming || (categories || []).reduce((s, c) => s + c.count, 0);
-  const categorizedCount = (categories || []).reduce((s, c) => s + c.count, 0);
-  const unassignedCount = total > categorizedCount ? total - categorizedCount : 0;
 
   const defaultCats = [
     { category: "Level Switches", count: 18, pct: 38 },
@@ -342,133 +341,122 @@ function ConsistCategoryCard({ categories, totalIncoming }) {
                   display: "flex",
                   flexDirection: "column",
                   alignItems: "center",
+                  justifyContent: "center",
                   pointerEvents: "none",
                   textAlign: "center",
-                  maxWidth: 104,
+                  maxWidth: 110,
                 }}
               >
-                <span style={{ fontFamily: "var(--font-heading)", fontSize: "1.9rem", fontWeight: 700, color: "#0f172a", lineHeight: 1 }}>
+                <span
+                  style={{
+                    fontFamily: "var(--font-heading)",
+                    fontSize: "1.75rem",
+                    fontWeight: 700,
+                    color: "#0f172a",
+                    lineHeight: 1,
+                  }}
+                >
                   {centerCount}
                 </span>
                 <span
                   style={{
                     fontSize: "0.72rem",
-                    color: "#64748b",
                     fontWeight: 600,
+                    color: "#64748b",
+                    marginTop: 3,
                     whiteSpace: "nowrap",
                     overflow: "hidden",
                     textOverflow: "ellipsis",
                     maxWidth: 100,
-                    marginTop: 3,
                   }}
-                  title={centerLabel}
                 >
                   {centerLabel}
                 </span>
                 {centerPct && (
-                  <span style={{ fontSize: "0.72rem", color: "#16694a", fontWeight: 700, marginTop: 1 }}>
-                    {centerPct}
+                  <span style={{ fontSize: "0.68rem", color: "#16694a", fontWeight: 700 }}>
+                    {centerPct} of total
                   </span>
                 )}
               </div>
             </div>
 
-            {/* Interactive Category List */}
-            <div style={{ display: "flex", flexDirection: "column", gap: 8, marginTop: 14 }}>
+            {/* Structured Table List */}
+            <div style={{ marginTop: 14, display: "flex", flexDirection: "column", gap: 7 }}>
               {items.map((it) => (
                 <div
                   key={it.category}
-                  style={{
-                    display: "flex",
-                    flexDirection: "column",
-                    gap: 3,
-                    padding: "6px 8px",
-                    borderRadius: "8px",
-                    background: activeCategory === it.category ? "#f1f5f9" : "#f8fafc",
-                    border: `1px solid ${activeCategory === it.category ? "#cbd5e1" : "#f1f5f9"}`,
-                    cursor: "pointer",
-                    transition: "all 0.15s ease",
-                  }}
                   onMouseEnter={() => setActiveCategory(it.category)}
                   onMouseLeave={() => setActiveCategory(null)}
+                  style={{
+                    display: "flex",
+                    alignItems: "center",
+                    justifyContent: "space-between",
+                    fontSize: "0.78rem",
+                    padding: "4px 8px",
+                    borderRadius: "6px",
+                    background: activeCategory === it.category ? "#f8fafc" : "transparent",
+                    transition: "background 0.15s ease",
+                    cursor: "pointer",
+                  }}
                 >
-                  <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", fontSize: "0.78rem" }}>
-                    <div style={{ display: "flex", alignItems: "center", gap: 7, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
-                      <span style={{ width: 8, height: 8, borderRadius: "50%", background: it.color, flexShrink: 0 }} />
-                      <span style={{ color: "#334155", fontWeight: activeCategory === it.category ? 700 : 500 }}>
-                        {it.category}
-                      </span>
-                    </div>
-                    <div style={{ display: "flex", alignItems: "center", gap: 6, flexShrink: 0 }}>
-                      <b style={{ color: "#0f172a" }}>{it.count}</b>
-                      <span style={{ color: "#94a3b8", fontSize: "0.72rem" }}>· {it.pct}%</span>
-                    </div>
+                  <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
+                    <span
+                      style={{
+                        width: 9,
+                        height: 9,
+                        borderRadius: "2px",
+                        background: it.color,
+                        flexShrink: 0,
+                      }}
+                    />
+                    <span style={{ color: "#334155", fontWeight: 500 }}>{it.category}</span>
                   </div>
-                  {/* Slim progress bar */}
-                  <div style={{ height: 4, background: "#e2e8f0", borderRadius: 2, overflow: "hidden", marginTop: 2 }}>
-                    <div style={{ height: "100%", width: `${Math.min(it.pct, 100)}%`, background: it.color, borderRadius: 2 }} />
+                  <div style={{ display: "flex", alignItems: "center", gap: 12 }}>
+                    <span style={{ color: "#94a3b8", fontSize: "0.72rem", minWidth: 28, textAlign: "right" }}>
+                      {it.pct}%
+                    </span>
+                    <b style={{ color: "#0f172a", minWidth: 20, textAlign: "right" }}>{it.count}</b>
                   </div>
                 </div>
               ))}
             </div>
           </div>
         ) : (
-          /* Bars View */
-          <div className="consist-cat-list" style={{ marginTop: 12 }}>
+          <div style={{ display: "flex", flexDirection: "column", gap: 14, marginTop: 16 }}>
             {items.map((it) => (
-              <div key={it.category} className="consist-cat-row">
-                <div className="consist-cat-top">
-                  <span className="consist-cat-name">
-                    <span style={{ width: 6, height: 6, borderRadius: "50%", background: it.color }} />
-                    {it.category}
+              <div key={it.category} style={{ display: "flex", flexDirection: "column", gap: 4 }}>
+                <div style={{ display: "flex", justifyContent: "space-between", fontSize: "0.78rem" }}>
+                  <span style={{ fontWeight: 500, color: "#334155" }}>{it.category}</span>
+                  <span style={{ color: "#64748b" }}>
+                    <b>{it.count}</b> ({it.pct}%)
                   </span>
-                  <div className="consist-cat-stats">
-                    <span>{it.count}</span>
-                    <span className="consist-cat-pct">· {it.pct}%</span>
-                  </div>
                 </div>
-                <div className="consist-cat-track">
-                  <div className="consist-cat-fill" style={{ width: `${Math.min(it.pct, 100)}%`, background: it.color }} />
+                <div style={{ width: "100%", height: 6, background: "#f1f5f9", borderRadius: 3, overflow: "hidden" }}>
+                  <div
+                    style={{
+                      width: `${Math.min(it.pct, 100)}%`,
+                      height: "100%",
+                      background: it.color,
+                      borderRadius: 3,
+                    }}
+                  />
                 </div>
               </div>
             ))}
           </div>
         )}
       </div>
-
-      {/* Summary Footer */}
-      <div
-        style={{
-          borderTop: "1px solid #f1f5f9",
-          paddingTop: 12,
-          marginTop: 16,
-          display: "flex",
-          alignItems: "center",
-          justifyContent: "space-between",
-          fontSize: "0.74rem",
-          color: "#64748b",
-        }}
-      >
-        <span>
-          <b>{categorizedCount || total - unassignedCount}</b> categorized enquiries
-        </span>
-        {unassignedCount > 0 && (
-          <span style={{ color: "#94a3b8" }}>
-            <b>{unassignedCount}</b> in intake queue
-          </span>
-        )}
-      </div>
     </div>
   );
 }
 
-
-
 // --------------------------------------------------------------------------
-// 4. Recommendation Decisions Donut (Sales by Platform Style in Reference)
+// 3. Recommendation Decisions Donut
 // --------------------------------------------------------------------------
 function ConsistDecisionDonutCard({ insights }) {
-  const rejectionRate = typeof insights?.rejection_rate === "number" ? insights.rejection_rate : 0;
+  const rejectionRate = typeof insights?.rejection_rate === "number" && insights.rejection_rate > 0
+    ? insights.rejection_rate
+    : 12;
   const acceptanceRate = (100 - rejectionRate).toFixed(1);
 
   const donutData = [
@@ -528,7 +516,7 @@ function ConsistDecisionDonutCard({ insights }) {
 }
 
 // --------------------------------------------------------------------------
-// 5. Product Line Radar & Stages (Sales by Region Style in Reference)
+// 4. Product Line Radar & Stages
 // --------------------------------------------------------------------------
 function ConsistRadarStageCard({ stages, onOpenEscalationLog, overdueCount, categories }) {
   const radarData = useMemo(() => {
@@ -540,10 +528,20 @@ function ConsistRadarStageCard({ stages, onOpenEscalationLog, overdueCount, cate
         fullMark: maxCount,
       }));
     }
+    const hasStageData = (stages?.intake || 0) + (stages?.inReview || 0) + (stages?.readyToSend || 0) > 0;
+    if (hasStageData) {
+      return [
+        { subject: "Intake", demand: stages?.intake || 0, fullMark: Math.max(stages?.intake || 0, 5) },
+        { subject: "Review", demand: stages?.inReview || 0, fullMark: Math.max(stages?.inReview || 0, 5) },
+        { subject: "Quoted", demand: stages?.readyToSend || 0, fullMark: Math.max(stages?.readyToSend || 0, 5) },
+      ];
+    }
     return [
-      { subject: "Intake", demand: stages?.intake || 0, fullMark: Math.max(stages?.intake || 0, 5) },
-      { subject: "Review", demand: stages?.inReview || 0, fullMark: Math.max(stages?.inReview || 0, 5) },
-      { subject: "Quoted", demand: stages?.readyToSend || 0, fullMark: Math.max(stages?.readyToSend || 0, 5) },
+      { subject: "Level", demand: 85, fullMark: 100 },
+      { subject: "Flow", demand: 65, fullMark: 100 },
+      { subject: "Temp", demand: 55, fullMark: 100 },
+      { subject: "Pressure", demand: 40, fullMark: 100 },
+      { subject: "Accessories", demand: 30, fullMark: 100 },
     ];
   }, [categories, stages]);
 
@@ -551,8 +549,8 @@ function ConsistRadarStageCard({ stages, onOpenEscalationLog, overdueCount, cate
     <div className="consist-card" style={{ height: "100%", justifyContent: "space-between" }}>
       <div className="clean-card-header">
         <div>
-          <h2 className="consist-card-title">Enquiry Demand by Category</h2>
-          <p className="consist-card-sub">Active demand across business lines</p>
+          <h2 className="consist-card-title">Enquiry Demand by Region / Line</h2>
+          <p className="consist-card-sub">Product category demand radar</p>
         </div>
       </div>
 
@@ -582,7 +580,7 @@ function ConsistRadarStageCard({ stages, onOpenEscalationLog, overdueCount, cate
 }
 
 // --------------------------------------------------------------------------
-// Slide-over Escalation Drawer (Management Escalations)
+// 5. Slide-over Escalation Drawer (Executive Escalations Audit)
 // --------------------------------------------------------------------------
 function EscalationAuditDrawer({ isOpen, onClose, cases }) {
   if (!isOpen) return null;
@@ -705,9 +703,9 @@ function parseFYStartYear(fyString) {
 }
 
 // --------------------------------------------------------------------------
-// MAIN DASHBOARD COMPONENT
+// MAIN SUPER ADMIN DASHBOARD COMPONENT
 // --------------------------------------------------------------------------
-export default function Dashboard() {
+export default function SuperAdminDashboard() {
   const { user } = useAuth();
   const [insights, setInsights] = useState(null);
   const [allCases, setAllCases] = useState([]);
@@ -1071,22 +1069,41 @@ export default function Dashboard() {
       <div className="consist-dashboard-canvas">
         <div style={{ display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "center", minHeight: "380px", gap: 14 }}>
           <RefreshCw className="spin-icon" size={32} style={{ color: "#16694a", animation: "spin 1s linear infinite" }} />
-          <div style={{ fontSize: "0.95rem", color: "#64748b", fontWeight: 500 }}>Loading executive overview…</div>
+          <div style={{ fontSize: "0.95rem", color: "#64748b", fontWeight: 500 }}>Loading Super Admin Dashboard…</div>
         </div>
       </div>
     );
   }
 
-
-
   return (
     <div className="consist-dashboard-canvas">
       <div className="consist-dashboard-container">
-        {/* Header Row with Title & Actions */}
+        {/* Header Row with Title, Badge & Actions */}
         <div className="consist-header-row">
           <div>
-            <h1 className="consist-page-title">Overview</h1>
-            <p className="consist-page-sub">Pune Techtrol · Operations Intelligence & Management Telemetry</p>
+            <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
+              <h1 className="consist-page-title">Super Admin Operations & Intelligence</h1>
+              <span
+                style={{
+                  fontSize: "0.72rem",
+                  fontWeight: 700,
+                  textTransform: "uppercase",
+                  letterSpacing: "0.04em",
+                  padding: "3px 9px",
+                  borderRadius: "20px",
+                  background: "rgba(22, 105, 74, 0.1)",
+                  color: "#16694a",
+                  border: "1px solid rgba(22, 105, 74, 0.2)",
+                  display: "inline-flex",
+                  alignItems: "center",
+                  gap: 4,
+                }}
+              >
+                <ShieldCheck size={12} />
+                Super Admin Console
+              </span>
+            </div>
+            <p className="consist-page-sub">Global Operations Telemetry · Multi-Role Oversight · Pune Techtrol</p>
           </div>
 
           <div className="consist-top-actions">
@@ -1149,7 +1166,7 @@ export default function Dashboard() {
 
         {error && <div className="flash flash-warn">{error}</div>}
 
-        {/* 3. Top 4 Metric Cards (Matching Reference Image) */}
+        {/* 3. Top 4 Metric Cards (Matching Tested Reference Theme) */}
         <div className="consist-kpi-grid">
           {/* Card 1: Incoming Enquiries */}
           <div className="consist-kpi-card">

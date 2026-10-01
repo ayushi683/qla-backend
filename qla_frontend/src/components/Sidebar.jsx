@@ -13,7 +13,9 @@ import {
   X,
   BookOpen,
   ShieldCheck,
-  Package
+  Package,
+  Settings,
+  Database,
 } from "lucide-react";
 
 const MAIN_NAV_ITEMS = [
@@ -25,6 +27,13 @@ const MAIN_NAV_ITEMS = [
 const MASTER_NAV_ITEMS = [
   { to: "/master/catalog", label: "Product Catalog", Icon: BookOpen, adminOnly: true },
   { to: "/master/users", label: "Users & Roles", Icon: Users, adminOnly: true },
+  { to: "/master/settings", label: "Admin Settings", Icon: Settings, adminOnly: true },
+];
+
+const SUPER_ADMIN_NAV_ITEMS = [
+  { to: "/super-admin", end: true, label: "Dashboard", Icon: LayoutDashboard },
+  { to: "/super-admin/users", label: "Users & Roles", Icon: Users },
+  { to: "/super-admin/settings", label: "Database Settings", Icon: Database },
 ];
 
 export default function Sidebar() {
@@ -58,6 +67,8 @@ export default function Sidebar() {
     navigate("/login");
   }
 
+  const isSuperAdminView = location.pathname.startsWith("/super-admin") || user.role === "SUPER_ADMIN";
+
   return (
     <>
       {/* 1. Mobile Top Navigation Bar */}
@@ -70,8 +81,12 @@ export default function Sidebar() {
         >
           <Menu size={22} />
         </button>
-        <span className="mobile-brand">QLA Admin</span>
-        <div className="mobile-user-badge">{user.role}</div>
+        <span className="mobile-brand">
+          {isSuperAdminView ? "QLA Super Admin" : "QLA Admin"}
+        </span>
+        <div className="mobile-user-badge">
+          {isSuperAdminView ? "SUPER ADMIN" : user.role}
+        </div>
       </header>
 
       {/* 2. Mobile Backdrop Overlay */}
@@ -100,7 +115,9 @@ export default function Sidebar() {
             {desktopCollapsed ? <ChevronRight size={16} /> : <ChevronLeft size={16} />}
           </button>
 
-          <span className="sidebar-brand">QLA Admin</span>
+          <span className="sidebar-brand">
+            {isSuperAdminView ? "QLA Super Admin" : "QLA Admin"}
+          </span>
 
           {/* Close button for mobile drawer */}
           <button
@@ -114,35 +131,32 @@ export default function Sidebar() {
         </div>
 
         <nav className="sidebar-nav">
-          {/* 1. Main Navigation */}
-          {MAIN_NAV_ITEMS.map((item) => (
-            <NavLink
-              key={item.to}
-              to={item.to}
-              end={item.end}
-              className={({ isActive }) => `sidebar-link ${isActive ? "active" : ""}`}
-              title={desktopCollapsed ? item.label : undefined}
-              onClick={() => setMobileOpen(false)}
-            >
-              <span className="sidebar-icon">
-                <item.Icon size={18} />
-              </span>
-              <span className="sidebar-label">{item.label}</span>
-            </NavLink>
-          ))}
-
-          {/* 2. Master Section (Admin Only) */}
-          {user.role === "ADMIN" && (
-            <div className="sidebar-group">
-              <div className="sidebar-group-heading">
-                {!desktopCollapsed && <span>MASTER</span>}
-                {desktopCollapsed && <div className="sidebar-group-sep" />}
-              </div>
-
-              {MASTER_NAV_ITEMS.map((item) => (
+          {isSuperAdminView ? (
+            /* Super Admin View: In left panel there is NOTHING, JUST Dashboard */
+            SUPER_ADMIN_NAV_ITEMS.map((item) => (
+              <NavLink
+                key={item.to}
+                to={item.to}
+                end
+                className={({ isActive }) => `sidebar-link ${isActive ? "active" : ""}`}
+                title={desktopCollapsed ? item.label : undefined}
+                onClick={() => setMobileOpen(false)}
+              >
+                <span className="sidebar-icon">
+                  <item.Icon size={18} />
+                </span>
+                <span className="sidebar-label">{item.label}</span>
+              </NavLink>
+            ))
+          ) : (
+            /* Standard Admin/Engineer View */
+            <>
+              {/* 1. Main Navigation */}
+              {MAIN_NAV_ITEMS.map((item) => (
                 <NavLink
                   key={item.to}
                   to={item.to}
+                  end={item.end}
                   className={({ isActive }) => `sidebar-link ${isActive ? "active" : ""}`}
                   title={desktopCollapsed ? item.label : undefined}
                   onClick={() => setMobileOpen(false)}
@@ -153,14 +167,76 @@ export default function Sidebar() {
                   <span className="sidebar-label">{item.label}</span>
                 </NavLink>
               ))}
-            </div>
+
+              {/* 2. Master Section (Admin Only) */}
+              {user.role === "ADMIN" && (
+                <div className="sidebar-group">
+                  <div className="sidebar-group-heading">
+                    {!desktopCollapsed && <span>MASTER</span>}
+                    {desktopCollapsed && <div className="sidebar-group-sep" />}
+                  </div>
+
+                  {MASTER_NAV_ITEMS.map((item) => (
+                    <NavLink
+                      key={item.to}
+                      to={item.to}
+                      className={({ isActive }) => `sidebar-link ${isActive ? "active" : ""}`}
+                      title={desktopCollapsed ? item.label : undefined}
+                      onClick={() => setMobileOpen(false)}
+                    >
+                      <span className="sidebar-icon">
+                        <item.Icon size={18} />
+                      </span>
+                      <span className="sidebar-label">{item.label}</span>
+                    </NavLink>
+                  ))}
+                </div>
+              )}
+            </>
           )}
         </nav>
 
         <div className="sidebar-bottom">
+          {/* Switch Portal Link */}
+          {isSuperAdminView ? (
+            <NavLink
+              to="/dashboard"
+              className="sidebar-link"
+              style={{ marginBottom: 6, fontSize: "0.78rem", color: "#64748b" }}
+              title={desktopCollapsed ? "Exit to Admin Portal" : undefined}
+            >
+              <span className="sidebar-icon">
+                <ChevronLeft size={16} />
+              </span>
+              <span className="sidebar-label">Admin Portal</span>
+            </NavLink>
+          ) : (
+            user.role === "ADMIN" && (
+              <NavLink
+                to="/super-admin"
+                className="sidebar-link"
+                style={{
+                  marginBottom: 6,
+                  fontSize: "0.78rem",
+                  color: "#16694a",
+                  background: "rgba(22, 105, 74, 0.06)",
+                  fontWeight: 600,
+                }}
+                title={desktopCollapsed ? "Super Admin Portal" : undefined}
+              >
+                <span className="sidebar-icon">
+                  <ShieldCheck size={16} />
+                </span>
+                <span className="sidebar-label">Super Admin Portal →</span>
+              </NavLink>
+            )
+          )}
+
           <div className="sidebar-user">
             <span className="sidebar-user-name">{user.display_name}</span>
-            <span className="sidebar-user-role">{user.role}</span>
+            <span className="sidebar-user-role">
+              {isSuperAdminView ? "SUPER ADMIN" : user.role}
+            </span>
           </div>
 
           <button

@@ -1,5 +1,5 @@
 import { useState, useEffect, useRef } from "react";
-import { MoreVertical, Shield, UserX, UserCheck, Trash2 } from "lucide-react";
+import { MoreVertical, Shield, UserX, UserCheck } from "lucide-react";
 import { api } from "../api/client";
 
 export default function UsersManagement() {
@@ -74,27 +74,6 @@ export default function UsersManagement() {
       setError(e.message || "Failed to update user");
     }
     setOpenMenuId(null);
-  }
-
-  async function handleDelete(user) {
-    if (!window.confirm(`Are you sure you want to delete user "${user.display_name}" (${user.email})?`)) {
-      return;
-    }
-    setBusy(true);
-    setError("");
-    try {
-      await api.deleteUser(user.user_id);
-      load();
-    } catch (e) {
-      if (e.message && (e.message.includes("405") || e.message.includes("Not Allowed"))) {
-        setError("Delete endpoint (DELETE /api/users/{id}) is pending on the backend. You can use 'Disable User' to revoke access in the meantime.");
-      } else {
-        setError(e.message || "Failed to delete user");
-      }
-    } finally {
-      setBusy(false);
-      setOpenMenuId(null);
-    }
   }
 
   return (
@@ -209,14 +188,6 @@ export default function UsersManagement() {
                       >
                         {u.is_enabled ? <UserX size={14} className="action-menu-icon" /> : <UserCheck size={14} className="action-menu-icon" />}
                         <span>{u.is_enabled ? "Disable User" : "Enable User"}</span>
-                      </button>
-                      <button
-                        type="button"
-                        className="action-menu-item action-menu-danger"
-                        onClick={() => handleDelete(u)}
-                      >
-                        <Trash2 size={14} className="action-menu-icon" />
-                        <span>Delete User</span>
                       </button>
                     </div>
                   )}
